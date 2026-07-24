@@ -732,6 +732,7 @@ const ViewIntegrations = {
           <button class="btn btn-sm" onclick="ViewIntegrations._editSpConfig()">${t('integrations.sp_edit_creds')}</button>
           <button class="btn btn-sm" onclick="ViewIntegrations._testSp()">${t('integrations.sp_test_conn')}</button>
         </div>
+        <div id="sp-diagnostics" style="display:none;"></div>
         <hr style="border:none;border-top:1px solid var(--border);margin:0 0 16px;">
         <b style="font-size:13px;">${t('integrations.sp_import_docs_title')}</b>
         <p style="font-size:12px;color:var(--text-muted);margin:4px 0 12px;">
@@ -853,8 +854,37 @@ const ViewIntegrations = {
     UI.toast(t('integrations.sp_testing'), 'info');
     try {
       const r = await Api.sharepoint.test();
-      UI.toast(r.message, 'success');
-    } catch (e) { UI.toast(e.message, 'error'); }
+      UI.toast(r.message, r.ok ? 'success' : 'error');
+      this._renderSpDiagnostics(r);
+    } catch (e) {
+      UI.toast(e.message, 'error');
+      this._renderSpDiagnostics({ ok: false, message: e.message });
+    }
+  },
+
+  // Diagnostico de la conexion: quien emitio el token y con que permisos.
+  // Sin esto, un 403 de Graph obliga a mirar la base de datos del cliente.
+  _renderSpDiagnostics(r) {
+    const host = document.getElementById('sp-diagnostics');
+    if (!host) return;
+    const d = r.diagnostics;
+    const row = (k, v) => `<div><span class="text-muted">${UI.esc(k)}:</span> <code>${UI.esc(v ?? '-')}</code></div>`;
+    host.style.display = 'block';
+    host.innerHTML = `
+      <div style="border:1px solid var(--border);border-radius:8px;padding:10px;margin-bottom:12px;font-size:12px;">
+        <b style="color:${r.ok ? 'var(--risk-low)' : 'var(--risk-high)'};">${UI.esc(r.message || '')}</b>
+        ${d ? `
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-top:8px;">
+            ${row('Organizacion de la config', d.config_organization_id)}
+            ${row('Tenant configurado', d.configured_tenant_id)}
+            ${row('Client ID configurado', d.configured_client_id)}
+            ${row('Tenant del token', d.token_tenant_id)}
+            ${row('Aplicacion del token', d.token_app_name || d.token_app_id)}
+            <div class="span2">${row('Roles concedidos', (d.roles || []).join(', ') || 'ninguno')}</div>
+          </div>
+          ${d.warning ? `<div style="margin-top:8px;color:var(--risk-high);">${UI.esc(d.warning)}</div>` : ''}
+        ` : ''}
+      </div>`;
   },
 
   // ---- Carpetas permitidas + sincronizacion automática ----
@@ -1114,6 +1144,9 @@ const ViewIntegrations = {
     </select>`;
     try {
       const r = await Api.sharepoint.sites();
+      // Permiso acotado a sitios concretos: no es un error, es la configuracion
+      // de seguridad del cliente. Se ofrece el acceso por URL sin alarmar.
+      if (r.restricted) { this._renderSiteUrlFallback(wrap, null, r.roles); return; }
       const sel = document.getElementById('sp-site');
       sel.innerHTML = `<option value="">${t('integrations.sp_select_site')}</option>` +
         r.sites.map(s => `<option value="${UI.esc(s.id)}">${UI.esc(s.name)}</option>`).join('');
@@ -1122,9 +1155,15 @@ const ViewIntegrations = {
     }
   },
 
-  _renderSiteUrlFallback(wrap, errorMsg) {
+  _renderSiteUrlFallback(wrap, errorMsg, roles) {
+    const head = errorMsg
+      ? `<div style="font-size:11px;color:var(--risk-high);margin-bottom:4px;">${UI.esc(errorMsg)}</div>`
+      : `<div style="font-size:11px;color:var(--text-muted);margin-bottom:4px;">
+           Permiso acotado${roles && roles.length ? ` (${UI.esc(roles.join(', '))})` : ''}:
+           esta aplicacion solo accede a los sitios que le han concedido, por eso no hay lista.
+         </div>`;
     wrap.innerHTML = `
-      <div style="font-size:11px;color:var(--risk-high);margin-bottom:4px;">${UI.esc(errorMsg)}</div>
+      ${head}
       <div style="font-size:11px;color:var(--text-muted);margin-bottom:4px;">${t('integrations.sp_site_search_denied_hint')}</div>
       <div style="display:flex;gap:4px;">
         <input id="sp-site-url" class="input" style="flex:1;" placeholder="https://tuempresa.sharepoint.com/sites/NombreDelSitio">

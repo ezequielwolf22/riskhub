@@ -57,6 +57,12 @@ def get_token(tenant_id: str, client_id: str, client_secret: str,
     return token
 
 
+def _endpoint_of(url: str) -> str:
+    """Ruta relativa de Graph, sin querystring. Para mensajes de error legibles."""
+    path = urllib.parse.urlparse(url).path
+    return path[len("/v1.0"):] if path.startswith("/v1.0") else path
+
+
 def _graph_get_url(token: str, url: str) -> dict:
     """Hace un GET a una URL absoluta de Graph (usado para paginacion/delta) y devuelve el JSON."""
     req = urllib.request.Request(url)
@@ -72,7 +78,30 @@ def _graph_get_url(token: str, url: str) -> dict:
             msg = err.get("error", {}).get("message", str(e))
         except Exception:
             msg = str(e)
-        raise ValueError(f"Graph API error {e.code}: {msg}")
+        # El endpoint concreto importa: /sites (busqueda global) exige permiso de
+        # todo el tenant, mientras que /sites/{host}:{ruta} y /drives funcionan con
+        # Sites.Selected. Sin saber cual fallo, un 403 no se puede diagnosticar.
+        raise ValueError(f"Graph API error {e.code}: {msg} [GET {_endpoint_of(url)}]")
+
+
+def describe_token(token: str) -> dict:
+    """Descompone el access token (sin verificar firma) para diagnostico.
+
+    Graph responde 403 "Access denied" tanto si la aplicacion no tiene el rol
+    concedido como si el token es de otro tenant. El claim `roles` distingue los
+    dos casos sin necesidad de entrar en Azure.
+    """
+    try:
+        import jwt as _jwt
+        claims = _jwt.decode(token, options={"verify_signature": False})
+    except Exception:
+        return {}
+    return {
+        "token_tenant_id": claims.get("tid"),
+        "token_app_id": claims.get("appid") or claims.get("azp"),
+        "token_app_name": claims.get("app_displayname"),
+        "roles": claims.get("roles") or [],
+    }
 
 
 def _graph_get(token: str, path: str, params: Optional[dict] = None) -> dict:
@@ -289,13 +318,31 @@ def decrypt_json(token: str) -> dict:
     return json.loads(Fernet(_fernet_key()).decrypt(token.encode()).decode())
 
 
-def get_config(db, organization_id: int | None = None) -> Optional[dict]:
-    """Devuelve la configuracion de SharePoint descifrada, o None si no existe."""
+def configured_org_ids(db) -> list:
+    """Organizaciones que tienen credenciales de SharePoint guardadas."""
     from app.models import IntegrationConfig
-    q = db.query(IntegrationConfig).filter(IntegrationConfig.name == _INTEGRATION_NAME)
-    if organization_id is not None:
-        q = q.filter(IntegrationConfig.organization_id == organization_id)
-    ic = q.first()
+    return [
+        ic.organization_id
+        for ic in db.query(IntegrationConfig).filter(
+            IntegrationConfig.name == _INTEGRATION_NAME).all()
+        if ic.config_encrypted
+    ]
+
+
+def get_config(db, organization_id: int | None = None) -> Optional[dict]:
+    """Devuelve la configuracion de SharePoint descifrada, o None si no existe.
+
+    El filtro por organizacion es SIEMPRE estricto. Antes, con organization_id
+    None (superadmin sin organizacion propia), la consulta no filtraba y devolvia
+    la primera fila de la tabla: las credenciales de Azure de OTRO cliente. El
+    token se obtenia sin error y Graph respondia 403 al pedir un sitio que ese
+    tenant no conoce, con toda la pinta de ser un problema de permisos ajeno.
+    """
+    from app.models import IntegrationConfig
+    ic = db.query(IntegrationConfig).filter(
+        IntegrationConfig.name == _INTEGRATION_NAME,
+        IntegrationConfig.organization_id == organization_id,
+    ).first()
     if not ic or not ic.config_encrypted:
         return None
     try:

@@ -33,11 +33,26 @@ _MAX_FILE_SIZE = 20 * 1024 * 1024   # 20 MB
 
 # ---------- Helpers ----------
 
+def _not_configured_detail(db: Session, organization_id) -> str:
+    """Mensaje de 'no configurado' que dice si las credenciales estan en otra org.
+
+    Es el fallo mas confuso de diagnosticar: las credenciales existen, pero
+    guardadas bajo una organizacion distinta de la que se esta consultando.
+    """
+    base = "SharePoint no configurado para esta organizacion (id: {}). Ve a Integraciones > SharePoint para configurar.".format(
+        organization_id if organization_id is not None else "ninguna")
+    others = [o for o in sp.configured_org_ids(db) if o != organization_id]
+    if others:
+        base += " Hay credenciales guardadas en otras organizaciones (ids: {}): comprueba el selector de organizacion activa.".format(
+            ", ".join(str(o) if o is not None else "sin organizacion" for o in others))
+    return base
+
+
 def _resolve_token(db: Session, organization_id=None) -> str:
     """Obtiene un access token de MS Graph usando las credenciales almacenadas."""
     cfg = sp.get_config(db, organization_id)
     if not cfg:
-        raise HTTPException(400, "SharePoint no configurado. Ve a Integraciones > SharePoint para configurar.")
+        raise HTTPException(400, _not_configured_detail(db, organization_id))
     try:
         # A4: pasar org_id para aislar tokens por tenant en la cache
         return sp.get_token(cfg["tenant_id"], cfg["client_id"], cfg["client_secret"],
@@ -134,17 +149,66 @@ def test_connection(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ):
-    """Prueba la conexion con Microsoft Graph API."""
-    token = _resolve_token(db, current_user.organization_id)
+    """Prueba la conexion con Microsoft Graph API y devuelve un diagnostico.
+
+    Un 403 de Graph no dice por si solo de quien es el problema. Este endpoint
+    contrasta las tres cosas que hay que comparar a mano para saberlo: que
+    organizacion tiene las credenciales, contra que tenant/aplicacion se ha
+    emitido realmente el token, y que roles de aplicacion trae concedidos.
+    """
+    org_id = current_user.organization_id
+    cfg = sp.get_config(db, org_id)
+    if not cfg:
+        raise HTTPException(400, _not_configured_detail(db, org_id))
+
+    token = _resolve_token(db, org_id)
+    diag = {
+        "config_organization_id": org_id,
+        "configured_tenant_id": cfg.get("tenant_id"),
+        "configured_client_id": cfg.get("client_id"),
+    }
+    diag.update(sp.describe_token(token))
+
+    roles = diag.get("roles") or []
+    if diag.get("token_tenant_id") and diag["token_tenant_id"] != cfg.get("tenant_id"):
+        diag["warning"] = ("El token se ha emitido contra un tenant distinto del configurado: "
+                           "las credenciales guardadas no son las de este cliente.")
+    elif not roles:
+        diag["warning"] = ("El token no trae ningun rol de aplicacion (claim 'roles' vacio): "
+                           "la App Registration ha perdido el consentimiento de administrador en Entra ID. "
+                           "Toda llamada a Graph respondera 403 hasta que se vuelva a conceder.")
+    elif not any(r.startswith("Sites.") for r in roles):
+        diag["warning"] = f"El token no tiene ningun permiso Sites.*: roles concedidos = {roles}."
+
     try:
         sites = sp.list_sites(token)
-        return {
-            "ok": True,
-            "message": f"Conexion correcta. Se encontraron {len(sites)} sitios accesibles.",
-            "sites_count": len(sites),
-        }
     except ValueError as e:
-        raise HTTPException(400, str(e))
+        # /sites (busqueda global) exige Sites.Read.All en todo el tenant. Con
+        # Sites.Selected falla siempre por diseno: la conexion es correcta y el
+        # resto del modulo funciona, solo hay que entrar por la URL del sitio.
+        if "403" in str(e) and "Sites.Selected" in roles:
+            diag.pop("warning", None)
+            return {
+                "ok": True,
+                "message": ("Conexion correcta con permiso acotado (Sites.Selected). No hay lista de "
+                            "sitios porque la aplicacion solo accede a los que le han concedido: "
+                            "introduce la URL del sitio para continuar."),
+                "sites_count": 0,
+                "restricted": True,
+                "diagnostics": diag,
+            }
+        return {
+            "ok": False,
+            "message": f"Token obtenido correctamente, pero Graph rechazo el listado de sitios: {e}",
+            "sites_count": 0,
+            "diagnostics": diag,
+        }
+    return {
+        "ok": True,
+        "message": f"Conexion correcta. Se encontraron {len(sites)} sitios accesibles.",
+        "sites_count": len(sites),
+        "diagnostics": diag,
+    }
 
 
 @router.get("/sites")
@@ -153,12 +217,28 @@ def list_sites(
     current_user: User = Depends(get_current_user),
     search: str = Query("*", description="Termino de busqueda de sitios"),
 ):
-    """Lista los sitios de SharePoint accesibles."""
+    """Lista los sitios de SharePoint accesibles.
+
+    Con permiso Sites.Selected la busqueda global responde 403 *por diseno* de
+    Microsoft: la aplicacion solo ve los sitios que le han concedido uno a uno.
+    Eso no es un error de conexion, asi que no se propaga como tal — se devuelve
+    `restricted` para que la UI ofrezca la via correcta (acceso por URL) en vez
+    de un "Access denied" en rojo que hace pensar que la integracion esta rota.
+    """
     token = _resolve_token(db, current_user.organization_id)
     try:
-        return {"sites": sp.list_sites(token, search)}
+        return {"sites": sp.list_sites(token, search), "restricted": False}
     except ValueError as e:
-        raise HTTPException(400, str(e))
+        if "403" not in str(e):
+            raise HTTPException(400, str(e))
+        roles = sp.describe_token(token).get("roles") or []
+        return {
+            "sites": [],
+            "restricted": True,
+            "roles": roles,
+            "reason": "sites_selected" if "Sites.Selected" in roles else "no_tenant_search",
+            "detail": str(e),
+        }
 
 
 @router.get("/sites/resolve")
