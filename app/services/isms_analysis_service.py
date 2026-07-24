@@ -439,56 +439,11 @@ def analyze_document_for_isms(db: Session, doc_id: int) -> None:
         # Nota: el re-análisis automático de activos se desactivó para evitar
         # consumo masivo de tokens de IA. Usar el botón "Analizar con IA" manual.
 
-        # ── Auto-detección de documentos BCP/DRP ─────────────────────────────
+        # ── Fan-out downstream: BCP/BCM (router de entrada unico, F7) ─────────
         try:
-            from app.services.bcp_service import (detect_bcp_document,
-                                                   suggest_plan_type_from_doc,
-                                                   next_plan_code)
-            from app.models import BCPPlan as _BCPPlan
-            _org_id = doc.organization_id
-            if detect_bcp_document(doc.original_name or "", analysis.get("summary", "")):
-                already = db.query(_BCPPlan).filter_by(
-                    organization_id=_org_id, document_id=doc.id).first()
-                if not already:
-                    pt = suggest_plan_type_from_doc(doc.original_name or "",
-                                                    analysis.get("summary", ""))
-                    plan = _BCPPlan(
-                        organization_id=_org_id,
-                        code=next_plan_code(db, _org_id, pt),
-                        plan_type=pt,
-                        name=f"[Auto] {doc.original_name}",
-                        status="draft",
-                        content_summary=(analysis.get("summary") or "")[:500],
-                        document_id=doc.id,
-                    )
-                    # Auto-detectar localización por nombre en el documento
-                    try:
-                        from app.models import BCMLocation
-                        locs = db.query(BCMLocation).filter_by(
-                            organization_id=_org_id, is_active=True).all()
-                        doc_text = (doc.original_name or "").lower()
-                        for loc in locs:
-                            if loc.name.lower() in doc_text or (loc.code or "").lower() in doc_text:
-                                plan.location_id = loc.id
-                                break
-                    except Exception:
-                        pass
-                    db.add(plan)
-                    db.commit()
-                    logger.info("BCP plan auto-created from ISMS doc %d: %s",
-                                doc.id, doc.original_name)
-                    # Revision semantica IA del contenido — ISO 22301 cl. 8.4.
-                    # Ya estamos en un background task (analyze_document_for_isms
-                    # se invoca desde _run_isms_analysis_bg), asi que se ejecuta
-                    # en la misma sesion sin bloquear ninguna respuesta HTTP.
-                    try:
-                        from app.services.bcm_content_reviewer import review_plan_content
-                        plan.ai_content_review = review_plan_content(db, plan)
-                        db.commit()
-                    except Exception as _re:
-                        logger.debug("BCM content review skipped for plan %d: %s", plan.id, _re)
+            route_document_downstream(db, doc, analysis)
         except Exception as _e:
-            logger.debug("BCP auto-detect skipped: %s", _e)
+            logger.debug("Routing downstream skipped doc=%d: %s", doc_id, _e)
 
     except Exception as exc:
         logger.error("ISMS analysis failed doc=%d: %s", doc_id, exc)
@@ -509,6 +464,118 @@ def analyze_document_for_isms(db: Session, doc_id: int) -> None:
             db.commit()
         except Exception:
             pass
+
+
+# ---------- Router de entrada unico: fan-out downstream (F7) ----------
+
+# Formatos que el motor de ingesta descompone bien (datos estructurados).
+_STRUCTURED_MIMES = {
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",  # xlsx
+    "text/csv",
+}
+# Pistas de contenido estructurado de continuidad en el nombre del archivo.
+import re as _re_mod  # noqa: E402
+_STRUCTURED_CONTINUITY_HINT = _re_mod.compile(
+    r"bia|impacto.*negocio|business.*impact|sedes?|localiz|"
+    r"escenarios?|ranking|inventario|listado|matriz|catalog",
+    _re_mod.IGNORECASE,
+)
+
+
+def _should_route_to_ingest(doc: AiDocument, analysis: dict) -> bool:
+    """True si el documento trae datos estructurados de continuidad que el motor
+    de ingesta sabe descomponer en entidades BCM.
+
+    Gate conservador — solo hojas de calculo/CSV con senal de continuidad. Un
+    plan BCP en prosa NO entra aqui (el motor no extraeria filas de el); ese
+    sigue su camino como BCPPlan. Evita disparar el pipeline pesado en cada doc.
+    """
+    mime = (doc.mime_type or "").lower()
+    if mime not in _STRUCTURED_MIMES:
+        return False
+    name = doc.original_name or ""
+    summary = analysis.get("overall_summary") or analysis.get("summary") or ""
+    if _STRUCTURED_CONTINUITY_HINT.search(name):
+        return True
+    # Tambien si el analisis lo relaciono con continuidad de negocio.
+    try:
+        from app.services.bcp_service import detect_bcp_document
+        return bool(detect_bcp_document(name, summary))
+    except Exception:
+        return False
+
+
+def route_document_downstream(db: Session, doc: AiDocument, analysis: dict) -> None:
+    """Fan-out del router de entrada unico (opcion A).
+
+    Todo documento entra por la puerta ISMS. Aqui, tras el analisis, se decide que
+    modulos adicionales alimenta:
+      - Continuidad en prosa (un plan) -> se auto-crea un BCPPlan (camino existente).
+      - Continuidad estructurada (un BIA, una lista de sedes) -> se encamina al
+        motor de ingesta compartido, que lo descompone en entidades BCM.
+    No son excluyentes: un mismo documento puede disparar ambos.
+    """
+    org_id = doc.organization_id
+    summary = analysis.get("overall_summary") or analysis.get("summary") or ""
+
+    # 1) Datos estructurados de continuidad -> motor de ingesta (job asincrono).
+    if _should_route_to_ingest(doc, analysis):
+        try:
+            from app.services.job_queue import enqueue
+            enqueue(
+                db, org_id, "bcp_ingest_document", {"doc_id": doc.id},
+                created_by_id=doc.uploaded_by_id,
+                dedupe_key=f"bcp_ingest_document:{doc.id}",
+            )
+            db.commit()
+            logger.info("Doc %d encaminado al motor de ingesta BCM", doc.id)
+        except Exception as _ie:
+            logger.debug("No se pudo encolar ingesta BCM doc=%d: %s", doc.id, _ie)
+
+    # 2) Documento de continuidad en prosa -> auto-crear BCPPlan (camino existente).
+    try:
+        from app.models import BCPPlan as _BCPPlan
+        from app.services.bcp_service import (detect_bcp_document,
+                                              next_plan_code,
+                                              suggest_plan_type_from_doc)
+        if not detect_bcp_document(doc.original_name or "", summary):
+            return
+        already = db.query(_BCPPlan).filter_by(
+            organization_id=org_id, document_id=doc.id).first()
+        if already:
+            return
+        pt = suggest_plan_type_from_doc(doc.original_name or "", summary)
+        plan = _BCPPlan(
+            organization_id=org_id,
+            code=next_plan_code(db, org_id, pt),
+            plan_type=pt,
+            name=f"[Auto] {doc.original_name}",
+            status="draft",
+            content_summary=summary[:500],
+            document_id=doc.id,
+        )
+        try:
+            from app.models import BCMLocation
+            locs = db.query(BCMLocation).filter_by(
+                organization_id=org_id, is_active=True).all()
+            doc_text = (doc.original_name or "").lower()
+            for loc in locs:
+                if loc.name.lower() in doc_text or (loc.code or "").lower() in doc_text:
+                    plan.location_id = loc.id
+                    break
+        except Exception:
+            pass
+        db.add(plan)
+        db.commit()
+        logger.info("BCP plan auto-created from ISMS doc %d: %s", doc.id, doc.original_name)
+        try:
+            from app.services.bcm_content_reviewer import review_plan_content
+            plan.ai_content_review = review_plan_content(db, plan)
+            db.commit()
+        except Exception as _re:
+            logger.debug("BCM content review skipped for plan %d: %s", plan.id, _re)
+    except Exception as _e:
+        logger.debug("BCP auto-detect skipped doc=%d: %s", doc.id, _e)
 
 
 # ---------- Re-analisis de activos en cadena ----------

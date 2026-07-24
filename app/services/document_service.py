@@ -74,6 +74,14 @@ def compute_sha256(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
+def read_document_bytes(doc: AiDocument) -> bytes | None:
+    """Bytes en claro del archivo del documento (descifrados). None si no existe."""
+    p = doc_path(doc.filename)
+    if not p.exists():
+        return None
+    return decrypt_doc(p.read_bytes())
+
+
 def find_duplicate_document(db: Session, organization_id, sha256: str):
     """Documento vivo de la misma organizacion con identico contenido, si existe.
 

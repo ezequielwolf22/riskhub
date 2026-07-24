@@ -118,11 +118,46 @@ def _handle_ingest_pack(payload: dict) -> dict:
         cleanup_staging(payload.get("staging_dir"))
 
 
+def _handle_bcp_ingest_document(payload: dict) -> dict:
+    """F7 — encamina UN documento ya subido al motor de ingesta BCM.
+
+    Es la fan-out del router de entrada unico (opcion A): un documento entra por
+    la puerta ISMS; si trae datos estructurados de continuidad, aqui se descompone
+    en entidades BCM (escenarios, BIA, sedes) con el motor compartido. Se ejecuta
+    con apply_profile=False: un solo documento no debe re-deducir el perfil global
+    de la organizacion.
+    """
+    from app.database import SessionLocal
+    from app.models import AiDocument
+    from app.services.document_service import read_document_bytes
+    from app.services.ingest.pipeline import run_pack
+
+    job_id = payload.get("_job_id")
+    doc_id = payload["doc_id"]
+    db = SessionLocal()
+    try:
+        doc = db.get(AiDocument, doc_id)
+        if not doc:
+            return {"doc_id": doc_id, "skipped": "documento no encontrado"}
+        data = read_document_bytes(doc)
+        if not data:
+            return {"doc_id": doc_id, "skipped": "archivo no disponible"}
+        return run_pack(
+            db, doc.organization_id, [(doc.original_name or f"doc_{doc_id}", data)],
+            user_id=doc.uploaded_by_id, job_id=job_id,
+            tier=payload.get("tier", "deep"), lang=payload.get("lang", "es"),
+            apply_profile=False,
+        )
+    finally:
+        db.close()
+
+
 _HANDLERS: dict[str, Callable[[dict], dict]] = {
     "asset_analysis_all": _handle_asset_analysis_all,
     "evidence_analysis": _handle_evidence_analysis,
     "document_vision_isms": _handle_document_vision_isms,
     "ingest_pack": _handle_ingest_pack,
+    "bcp_ingest_document": _handle_bcp_ingest_document,
 }
 
 
