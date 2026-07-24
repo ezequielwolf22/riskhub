@@ -179,9 +179,73 @@ def update_requirement(
         req.responsible_id = body.responsible_id
 
     req.last_reviewed_at = datetime.now(timezone.utc)
+    # F4 — procedencia: decision humana. Tiene la maxima precedencia (junto con
+    # auditor); los recalculos automaticos ya no la pisan.
+    req.source = "human_manual"
+    req.source_ref = f"user:{current_user.id}"
+    req.rationale = (body.notes or "").strip()[:500] or "Marcado manualmente por un analista."
+    req.computed_at = datetime.now(timezone.utc)
     db.commit()
 
     return {"message": _t("compliance.requirement_updated", lang), "id": req.id}
+
+
+@router.get("/requirements/{framework_code}/{requirement_id}/provenance")
+def get_requirement_provenance(
+    framework_code: str,
+    requirement_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Procedencia del estado de un requisito: por que esta como esta (F4).
+
+    Responde "por que esta en verde" con la fuente (auditor/humano/contenido IA/
+    controles/heuristica), la referencia (documento, control, usuario), la
+    explicacion y cuando se calculo. Ademas lista las evidencias que lo sostienen.
+    """
+    lang = get_lang(request)
+    org_id = _filter_org(current_user)
+    if not org_id:
+        raise HTTPException(400, _t("compliance.org_required", lang))
+
+    req = db.query(ComplianceFrameworkStatus).filter(
+        ComplianceFrameworkStatus.organization_id == org_id,
+        ComplianceFrameworkStatus.framework_code == framework_code,
+        ComplianceFrameworkStatus.requirement_id == requirement_id,
+    ).first()
+    if not req:
+        raise HTTPException(404, _t("compliance.not_found", lang))
+
+    from app.models import Evidence
+    ev_rows = db.query(Evidence).filter(
+        Evidence.organization_id == org_id,
+        Evidence.compliance_framework == framework_code,
+        Evidence.compliance_requirement == requirement_id,
+        Evidence.is_current == True,  # noqa: E712
+    ).all()
+    evidences = [{
+        "id": e.id,
+        "code": e.code,
+        "title": e.title,
+        "auto_generated": bool(getattr(e, "auto_generated", False)),
+        "verified": bool(isinstance(e.ai_review, dict) and e.ai_review.get("relevant") is True),
+        "source_document_id": getattr(e, "source_document_id", None),
+    } for e in ev_rows]
+
+    return {
+        "framework_code": framework_code,
+        "requirement_id": requirement_id,
+        "status": req.status.value if req.status else None,
+        "completion_pct": req.completion_pct,
+        "source": getattr(req, "source", None),
+        "source_ref": getattr(req, "source_ref", None),
+        "rationale": getattr(req, "rationale", None),
+        "computed_at": req.computed_at.isoformat() if getattr(req, "computed_at", None) else None,
+        "last_reviewed_at": req.last_reviewed_at.isoformat() if req.last_reviewed_at else None,
+        "evidence_count": req.evidence_count,
+        "evidences": evidences,
+    }
 
 
 @router.post("/sync-controls")

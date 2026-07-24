@@ -287,6 +287,9 @@ const Api = {
   },
   compliance: {
     summary: () => Api.get('/api/ai/compliance/summary'),
+    // F4 — procedencia del estado de un requisito ("por que esta en verde")
+    provenance: (fw, req) =>
+      Api.get(`/api/compliance/requirements/${encodeURIComponent(fw)}/${encodeURIComponent(req)}/provenance`),
   },
   ai: {
     riskSuggest: (d) => Api.post('/api/ai/risk-suggest', d),

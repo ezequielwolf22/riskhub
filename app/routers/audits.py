@@ -402,6 +402,11 @@ def respond_checklist_item(
         if stmt:
             stmt.status = ComplianceRequirementStatus.AUDITED
             stmt.last_reviewed_at = datetime.now(timezone.utc)
+            # F4 — procedencia: verificado por un auditor. Maxima precedencia.
+            stmt.source = "human_audit"
+            stmt.source_ref = f"audit_item:{item.id}"
+            stmt.rationale = "Verificado en auditoria interna."
+            stmt.computed_at = datetime.now(timezone.utc)
 
     db.commit()
     return _checklist_to_dict(item)

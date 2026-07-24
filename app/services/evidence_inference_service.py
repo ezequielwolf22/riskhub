@@ -139,6 +139,15 @@ def infer_compliance_from_document(
                 ComplianceFrameworkStatus.requirement_id == req_id,
             ).first()
 
+            # F4 — precedencia: no pisar una decision humana (manual o auditor).
+            if req_status and req_status.source in ("human_manual", "human_audit"):
+                continue
+
+            _now = datetime.now(timezone.utc)
+            _rationale = (
+                f"Documento '{(doc.original_name or '')[:60]}' cubre el control "
+                f"{control_code} ({coverage}), que mapea a este requisito."
+            )
             if not req_status:
                 req_status = ComplianceFrameworkStatus(
                     organization_id=org_id,
@@ -146,6 +155,10 @@ def infer_compliance_from_document(
                     requirement_id=req_id,
                     status=new_status,
                     completion_pct=completion,
+                    source="ai_content",
+                    source_ref=f"doc:{doc.id};ctrl:{control_code}"[:128],
+                    rationale=_rationale,
+                    computed_at=_now,
                 )
                 db.add(req_status)
             else:
@@ -157,17 +170,26 @@ def infer_compliance_from_document(
                     ComplianceRequirementStatus.IMPLEMENTED,
                     ComplianceRequirementStatus.AUDITED,
                 ]
+                _changed = False
                 try:
                     current_idx = current_order.index(req_status.status)
                     new_idx = current_order.index(new_status)
                     if new_idx > current_idx:
                         req_status.status = new_status
                         req_status.completion_pct = max(req_status.completion_pct or 0, completion)
+                        _changed = True
                     elif new_idx == current_idx:
                         req_status.completion_pct = max(req_status.completion_pct or 0, completion)
+                        _changed = True
                 except ValueError:
                     req_status.status = new_status
                     req_status.completion_pct = completion
+                    _changed = True
+                if _changed:
+                    req_status.source = "ai_content"
+                    req_status.source_ref = f"doc:{doc.id};ctrl:{control_code}"[:128]
+                    req_status.rationale = _rationale
+                    req_status.computed_at = _now
 
             req_status.last_reviewed_at = datetime.now(timezone.utc)
             req_status.evidence_count = (req_status.evidence_count or 0) + 1

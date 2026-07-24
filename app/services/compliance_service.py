@@ -215,6 +215,8 @@ def get_framework_compliance_status(db: Session, org_id: int, framework_code: st
                 "status": s.status.value if s else ComplianceRequirementStatus.PLANNED.value,
                 "completion_pct": int(eff_pct),
                 "evidence_count": s.evidence_count if s else 0,
+                "source": getattr(s, "source", None) if s else None,
+                "rationale": getattr(s, "rationale", None) if s else None,
                 "missing_evidence": (
                     s is not None
                     and s.status == ComplianceRequirementStatus.PARTIAL
@@ -464,26 +466,47 @@ def auto_update_compliance_from_controls(db: Session, org_id: int) -> int:
                     # Controles implementados Y evidencia — plenamente conforme
                     new_status = ComplianceRequirementStatus.IMPLEMENTED
                     new_pct = 100
+                    new_rationale = (
+                        f"Controles {', '.join(req_controls)} implementados y "
+                        f"{total_evidence} evidencia(s) verificada(s)."
+                    )
                 else:
                     # Controles presentes pero sin evidencia: un auditor lo marcaria NC
                     new_status = ComplianceRequirementStatus.PARTIAL
                     new_pct = 75
+                    new_rationale = (
+                        f"Controles {', '.join(req_controls)} implementados pero sin "
+                        f"evidencia verificada — un auditor lo marcaria no conforme."
+                    )
             elif partial:
                 new_pct = int(matched_count / len(req_controls) * 100)
                 new_pct = max(10, min(70, new_pct))  # cap a 70 si controles parciales
                 new_status = ComplianceRequirementStatus.PARTIAL
                 existing.evidence_count = 0
+                new_rationale = (
+                    f"{matched_count} de {len(req_controls)} controles del requisito "
+                    f"implementados."
+                )
             else:
                 if existing.status == ComplianceRequirementStatus.NOT_APPLICABLE:
                     continue
                 new_status = ComplianceRequirementStatus.PLANNED
                 new_pct = 0
                 existing.evidence_count = 0
+                new_rationale = "Ningun control del requisito esta implementado."
+
+            # F4 — precedencia: no pisar una decision humana (manual o auditor).
+            if existing.source in ("human_manual", "human_audit"):
+                continue
 
             if existing.status != new_status or existing.completion_pct != new_pct:
                 existing.status = new_status
                 existing.completion_pct = new_pct
                 existing.last_reviewed_at = datetime.now(timezone.utc)
+                existing.source = "controls_derived"
+                existing.source_ref = ",".join(req_controls)[:128]
+                existing.rationale = new_rationale
+                existing.computed_at = datetime.now(timezone.utc)
                 updated += 1
 
     if updated:

@@ -120,6 +120,76 @@ def test_verified_auto_evidence_reaches_implemented(client):
         db.close()
 
 
+def test_auto_update_writes_provenance(client):
+    """El recalculo por controles deja procedencia: source, rationale, computed_at."""
+    from app.models import Evidence, EvidenceType
+    from app.services.compliance_service import auto_update_compliance_from_controls
+
+    db = _TestSession()
+    try:
+        org_id, impl_id = _setup_org_with_implemented_control(db)
+        db.add(Evidence(
+            organization_id=org_id, code=f"EVD-P{_uid()[:5]}",
+            title=f"Ev {_uid()}", control_implementation_id=impl_id,
+            evidence_type=EvidenceType.OTHER, auto_generated=False, is_current=True,
+        ))
+        db.commit()
+        auto_update_compliance_from_controls(db, org_id)
+        st = _req_52_status(db, org_id)
+        assert st.source == "controls_derived"
+        assert st.rationale and "5.1" in st.rationale
+        assert st.computed_at is not None
+        assert st.source_ref and "5.1" in st.source_ref
+    finally:
+        db.close()
+
+
+def test_human_decision_not_overwritten_by_auto(client):
+    """Una decision humana (source=human_manual) sobrevive al recalculo automatico."""
+    from app.models import ComplianceRequirementStatus
+    from app.services.compliance_service import auto_update_compliance_from_controls
+
+    db = _TestSession()
+    try:
+        org_id, impl_id = _setup_org_with_implemented_control(db)
+        st = _req_52_status(db, org_id)
+        # Un humano lo marca NOT_APPLICABLE con procedencia humana.
+        st.status = ComplianceRequirementStatus.NOT_APPLICABLE
+        st.completion_pct = 0
+        st.source = "human_manual"
+        st.rationale = "Excluido con justificacion por el CISO."
+        db.commit()
+
+        auto_update_compliance_from_controls(db, org_id)
+        st = _req_52_status(db, org_id)
+        # El recalculo NO lo pisa: sigue siendo la decision humana.
+        assert st.status == ComplianceRequirementStatus.NOT_APPLICABLE
+        assert st.source == "human_manual"
+    finally:
+        db.close()
+
+
+def test_manual_update_sets_human_provenance(client, auth_headers):
+    """El PUT del router marca la procedencia como humana.
+
+    Usa un requirement_id propio (no del catalogo estandar) para no contaminar
+    la org por defecto compartida entre tests con requisitos que otros esperan
+    crear ellos mismos (p.ej. la propagacion regwatch sobre A.5.1)."""
+    fw, req_id = "iso27001", "PROV.TEST.1"
+    # El PUT crea el requisito si no existe, sin necesidad de inicializar el marco.
+    resp = client.put(f"/api/compliance/requirements/{fw}/{req_id}", headers=auth_headers,
+                      json={"status": "implemented", "completion_pct": 100,
+                            "notes": "Verificado a mano"})
+    assert resp.status_code == 200, resp.text
+
+    prov = client.get(f"/api/compliance/requirements/{fw}/{req_id}/provenance", headers=auth_headers)
+    assert prov.status_code == 200, prov.text
+    body = prov.json()
+    assert body["source"] == "human_manual"
+    assert body["rationale"] == "Verificado a mano"
+    assert body["computed_at"] is not None
+
+
 def test_manual_evidence_reaches_implemented(client):
     """Evidencia manual (humana) siempre cuenta => IMPLEMENTED 100."""
     from app.models import Evidence, EvidenceType, ComplianceRequirementStatus
