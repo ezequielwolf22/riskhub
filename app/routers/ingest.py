@@ -210,6 +210,90 @@ def revert(trace_id: int, request: Request, db: Session = Depends(get_db),
     return {"reverted": ok, "trace_id": trace_id}
 
 
+class RecordEditIn(BaseModel):
+    fields: dict
+
+
+def _chk_trace(db, trace_id: int, org_id: int, lang: str) -> IngestRecordTrace:
+    t = db.get(IngestRecordTrace, trace_id)
+    if not t or t.organization_id != org_id:
+        raise HTTPException(404, _t("ingest.record_not_found", lang))
+    return t
+
+
+@router.post("/records/{trace_id}/accept")
+def accept_record(trace_id: int, request: Request, db: Session = Depends(get_db),
+                  u: User = Depends(require_analyst)):
+    """Da por bueno el registro: quita la marca de revision. Reversible."""
+    lang = get_lang(request)
+    t = _chk_trace(db, trace_id, _org(u, lang), lang)
+    t.needs_review = False
+    model = _model_for_table(t.table_name)
+    rec = db.get(model, t.record_id) if model else None
+    if rec is not None and hasattr(rec, "needs_review"):
+        rec.needs_review = False
+    db.commit()
+    return {"trace_id": trace_id, "needs_review": False}
+
+
+@router.patch("/records/{trace_id}")
+def edit_record(trace_id: int, body: RecordEditIn, request: Request,
+                db: Session = Depends(get_db), u: User = Depends(require_analyst)):
+    """Edita a mano los campos de un registro importado.
+
+    Cada campo editado queda protegido (no lo pisa una reimportacion) y el
+    registro se da por revisado. La ultima palabra es del usuario.
+    """
+    from app.services.ingest.batch import set_override
+    lang = get_lang(request)
+    org = _org(u, lang)
+    t = _chk_trace(db, trace_id, org, lang)
+    changed = {}
+    for field_name, value in (body.fields or {}).items():
+        previous = _apply_field(db, org, t.table_name, t.record_id,
+                                field_name, value, lang)
+        set_override(db, org, t.table_name, t.record_id, field_name,
+                     value=value, previous_value=previous,
+                     reason="Editado a mano en la revision", user_id=u.id,
+                     entity=t.entity)
+        changed[field_name] = value
+    t.needs_review = False
+    model = _model_for_table(t.table_name)
+    rec = db.get(model, t.record_id) if model else None
+    if rec is not None and hasattr(rec, "needs_review"):
+        rec.needs_review = False
+    db.commit()
+    log_action(db, u.id, "edit", t.table_name, str(t.record_id), {"fields": list(changed)})
+    return {"trace_id": trace_id, "changed": changed, "needs_review": False}
+
+
+@router.post("/records/{trace_id}/not-duplicate")
+def not_duplicate(trace_id: int, request: Request, db: Session = Depends(get_db),
+                  u: User = Depends(require_analyst)):
+    """Confirma que un registro marcado 'posible duplicado' NO lo es.
+
+    Quita la marca de revision y borra la nota de parecido. No fusiona nada:
+    la decision de que son distintos es del usuario y se respeta.
+    """
+    lang = get_lang(request)
+    t = _chk_trace(db, trace_id, _org(u, lang), lang)
+    after = dict(t.after or {})
+    after.pop("_possible_duplicate", None)
+    t.after = after
+    t.needs_review = False
+    model = _model_for_table(t.table_name)
+    rec = db.get(model, t.record_id) if model else None
+    if rec is not None and hasattr(rec, "needs_review"):
+        rec.needs_review = False
+    db.commit()
+    return {"trace_id": trace_id, "needs_review": False}
+
+
+def _model_for_table(table_name: str):
+    from app.services.ingest.batch import _model_for
+    return _model_for(table_name)
+
+
 # ── Mapas de volcado ("como lo entendi") ─────────────────────────────────────
 
 def _map_d(m: IngestSourceMap) -> dict:
