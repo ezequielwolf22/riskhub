@@ -388,7 +388,69 @@ def build_source_map(db, org_id: Optional[int], document: dict,
         input_schema=_sourcemap_schema(),
         org_id=org_id, call_type="ingest_sourcemap",
     )
-    return _sanitize_map(parsed, document)
+    smap = _sanitize_map(parsed, document)
+
+    # Segundo pase: "que te has dejado". La primera lectura tiende a quedarse
+    # corta en documentos densos (un BIA de 11 hojas). Aqui se le ensena lo que
+    # ya saco y se le pide, expresamente, lo que falta — sin repetir lo que ya
+    # tiene. Es lo que hace que no deje datos atras.
+    try:
+        smap = _gap_fill(db, org_id, document, smap, profile, lang, api_key, model, body)
+    except Exception:
+        logger.warning("ingest: el pase de completitud fallo; se sigue con lo "
+                       "extraido en la primera lectura", exc_info=True)
+    return smap
+
+
+def _gap_fill(db, org_id, document, smap, profile, lang, api_key, model, body) -> dict:
+    """Pide al modelo lo que se dejo en la primera lectura y lo anade."""
+    # Resumen compacto de lo ya extraido: entidad -> cuantas filas y una muestra
+    resumen = []
+    for u in (smap.get("units") or []):
+        rows = u.get("rows") or []
+        muestra = "; ".join(
+            str((r.get("fields") or {}).get("name")
+                or (r.get("fields") or {}).get("code") or "?")[:40]
+            for r in rows[:8])
+        resumen.append(f"- {u.get('target_entity')}: {len(rows)} filas ya "
+                       f"extraidas ({muestra})")
+    ya = "\n".join(resumen) or "(nada extraido todavia)"
+
+    system = (
+        "Eres un consultor de continuidad revisando si una PRIMERA lectura de un "
+        "documento se dejo datos. Tu unica tarea: devolver las filas que FALTAN, "
+        "nunca repetir las que ya estan. Se exhaustivo: si el documento tiene una "
+        "tabla de 17 procesos y solo se extrajeron 5, devuelve los 12 restantes. "
+        "Presta especial atencion a: procesos de negocio, valoraciones del BIA "
+        "(cada una con su sede, su escenario y sus impactos), dependencias, y "
+        "cualquier tabla o bloque entero que se haya ignorado. Usa SOLO las "
+        "entidades y campos del catalogo, y '_ref_<campo>' para enlazar. Si de "
+        "verdad no falta nada, devuelve una lista vacia."
+        f"\n\nResponde en el idioma: {lang}."
+    )
+    parsed, _msg = structured_message(
+        api_key, model=model, max_tokens=16000, system=system,
+        messages=[{
+            "role": "user",
+            "content": (f"CATALOGO DE ENTIDADES:{contracts.describe_for_prompt()}\n\n"
+                        f"YA EXTRAIDO EN LA PRIMERA LECTURA:\n{ya}\n\n"
+                        f"DOCUMENTO COMPLETO:\n{body}\n\n"
+                        f"Devuelve SOLO lo que falte."),
+        }],
+        tool_name="anadir_filas_que_faltan",
+        tool_description="Entrega unicamente las filas que la primera lectura omitio",
+        input_schema=_sourcemap_schema(),
+        org_id=org_id, call_type="ingest_gapfill",
+    )
+    extra = _sanitize_map(parsed, document)
+    extra_units = extra.get("units") or []
+    added = sum(len(u.get("rows") or []) for u in extra_units)
+    if added:
+        smap.setdefault("units", []).extend(extra_units)
+        smap["gap_filled_rows"] = added
+        logger.info("ingest: el pase de completitud anadio %d filas a %s",
+                    added, document.get("filename"))
+    return smap
 
 
 def _sanitize_map(parsed: dict, document: dict) -> dict:
