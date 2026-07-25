@@ -962,6 +962,16 @@ def _migrate_columns() -> None:
         ("ALTER TABLE compliance_framework_status ADD COLUMN source_ref VARCHAR(128)", "compliance_framework_status", "source_ref"),
         ("ALTER TABLE compliance_framework_status ADD COLUMN rationale TEXT", "compliance_framework_status", "rationale"),
         ("ALTER TABLE compliance_framework_status ADD COLUMN computed_at DATETIME", "compliance_framework_status", "computed_at"),
+        # v6.7.0 — Suppliers Module Review (feedback cliente OFA)
+        ("ALTER TABLE suppliers ADD COLUMN business_importance_level VARCHAR(16)", "suppliers", "business_importance_level"),
+        ("ALTER TABLE suppliers ADD COLUMN security_risk_level VARCHAR(16)", "suppliers", "security_risk_level"),
+        ("ALTER TABLE suppliers ADD COLUMN backup_owner_id INTEGER REFERENCES users(id)", "suppliers", "backup_owner_id"),
+        ("ALTER TABLE suppliers ADD COLUMN operating_region VARCHAR(64)", "suppliers", "operating_region"),
+        ("ALTER TABLE suppliers ADD COLUMN review_frequency VARCHAR(16)", "suppliers", "review_frequency"),
+        ("ALTER TABLE suppliers ADD COLUMN security_status VARCHAR(40)", "suppliers", "security_status"),
+        ("ALTER TABLE suppliers ADD COLUMN security_status_changed_at DATETIME", "suppliers", "security_status_changed_at"),
+        ("ALTER TABLE suppliers ADD COLUMN security_status_changed_by_id INTEGER REFERENCES users(id)", "suppliers", "security_status_changed_by_id"),
+        ("ALTER TABLE suppliers ADD COLUMN agreement_status VARCHAR(24)", "suppliers", "agreement_status"),
     ]
     # Inspeccion de columnas portable (SQLite y PostgreSQL): en un PostgreSQL
     # recien creado, create_all() ya materializo todas las columnas de los

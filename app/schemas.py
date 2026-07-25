@@ -695,6 +695,14 @@ class SupplierIn(BaseModel):
     department: Optional[str] = None
     business_importance: Optional[int] = Field(default=None, ge=1, le=5)
     internal_owner_id: Optional[int] = None
+    # v6.7.0 — Suppliers Module Review
+    business_importance_level: Optional[str] = None
+    security_risk_level: Optional[str] = None
+    backup_owner_id: Optional[int] = None
+    operating_region: Optional[str] = None
+    review_frequency: Optional[str] = None
+    security_status: Optional[str] = None
+    agreement_status: Optional[str] = None
 
 
 class SupplierUpdate(BaseModel):
@@ -744,6 +752,14 @@ class SupplierUpdate(BaseModel):
     business_importance: Optional[int] = Field(default=None, ge=1, le=5)
     internal_owner_id: Optional[int] = None
     trust_portal_url: Optional[str] = None
+    # v6.7.0 — Suppliers Module Review
+    business_importance_level: Optional[str] = None
+    security_risk_level: Optional[str] = None
+    backup_owner_id: Optional[int] = None
+    operating_region: Optional[str] = None
+    review_frequency: Optional[str] = None
+    security_status: Optional[str] = None
+    agreement_status: Optional[str] = None
 
 
 class SupplierOut(ORMBase):
@@ -807,6 +823,17 @@ class SupplierOut(ORMBase):
     email_subject: Optional[str] = None
     email_extraction_method: Optional[str] = None
     email_needs_review: Optional[bool] = None
+    # v6.7.0 — Suppliers Module Review
+    business_importance_level: Optional[str] = None
+    security_risk_level: Optional[str] = None
+    backup_owner_id: Optional[int] = None
+    operating_region: Optional[str] = None
+    review_frequency: Optional[str] = None
+    review_status: Optional[str] = None          # computado (property del modelo)
+    security_status: Optional[str] = None
+    security_status_changed_at: Optional[datetime] = None
+    agreement_status: Optional[str] = None
+    next_action_owner: Optional[str] = None      # computado (property del modelo)
 
     _coerce_scores = field_validator(
         "score", "inherent_risk_score", "control_effectiveness",

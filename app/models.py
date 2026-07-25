@@ -1084,6 +1084,36 @@ class Supplier(Base):
     trust_portal_url = Column(String(512), nullable=True)
     trust_portal_last_scraped_at = Column(DateTime, nullable=True)
     trust_portal_raw_data = Column(JSON, nullable=True)             # datos extraidos por la IA
+    # v6.7.0 — Suppliers Module Review (feedback cliente OFA)
+    # Punto 2: dos clasificaciones INDEPENDIENTES, editables por Seguridad y filtrables por separado.
+    business_importance_level = Column(String(16), nullable=True)   # not_relevant|normal|important|critical
+    security_risk_level = Column(String(16), nullable=True)         # very_low|low|medium|high|critical
+    # Punto 3: propiedad y continuidad (Owner = requester, Backup = line manager)
+    backup_owner_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    # Punto 4: region de gobierno configurable, independiente del pais
+    operating_region = Column(String(64), nullable=True)
+    # Punto 5: ciclo de revision (review_status se computa desde next_assessment_at + security_status)
+    review_frequency = Column(String(16), nullable=True)            # monthly|quarterly|semiannual|annual|biennial|none
+    # Punto 6: estado del flujo de seguridad (distinto de lifecycle_stage / relationship_status)
+    security_status = Column(String(40), nullable=True)            # draft|pending_supplier_response|pending_security_review|pending_additional_info|security_approved|security_approved_with_mitigation|risk_accepted|rejected|offboarded
+    security_status_changed_at = Column(DateTime, nullable=True)
+    security_status_changed_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    # Punto 13: estado del acuerdo / contrato (importable)
+    agreement_status = Column(String(24), nullable=True)           # none|draft|pending_signature|signed|expired
+    backup_owner = relationship("User", foreign_keys="[Supplier.backup_owner_id]")
+
+    @property
+    def review_status(self) -> str:
+        """Estado de revision computado (punto 5). No se persiste."""
+        from app.services.tprm_classification import compute_review_status
+        rel = self.relationship_status.value if self.relationship_status else None
+        return compute_review_status(self.next_assessment_at, self.security_status, rel)
+
+    @property
+    def next_action_owner(self) -> str:
+        """Quien tiene la siguiente accion (punto 18)."""
+        from app.services.tprm_classification import next_action_owner
+        return next_action_owner(self.security_status)
 
 
 class OnboardingGateConfig(Base):
@@ -1942,6 +1972,65 @@ class VendorIssue(Base):
     @property
     def supplier_name(self) -> str:
         return self.supplier.name if self.supplier else ""
+
+
+class SupplierEvent(Base):
+    """Evento del historial / timeline de un proveedor (feedback cliente, punto 12).
+
+    Traza cronologica auditable: incidentes, brechas de SLA, cambios de
+    propiedad/contrato, revisiones completadas y reclasificaciones de riesgo.
+    Muchos se generan automaticamente desde hooks existentes (source=auto)."""
+    __tablename__ = "supplier_events"
+    id = Column(Integer, primary_key=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=True, index=True)
+    supplier_id = Column(Integer, ForeignKey("suppliers.id"), nullable=False, index=True)
+    # security_incident|sla_breach|ownership_change|contract_change|review_completed|
+    # risk_reclassified|status_change|assessment_completed|note|other
+    event_type = Column(String(40), nullable=False)
+    title = Column(String(255), nullable=False)
+    description = Column(Text, nullable=True)
+    detail = Column(JSON, nullable=True)                  # {from, to, ...} datos estructurados del cambio
+    occurred_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
+    source = Column(String(16), default="manual")         # manual | auto
+    ref_type = Column(String(32), nullable=True)          # incident|vendor_issue|assessment|questionnaire|...
+    ref_id = Column(Integer, nullable=True)
+    created_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+    supplier = relationship("Supplier")
+    created_by = relationship("User", foreign_keys="[SupplierEvent.created_by_id]")
+
+    @property
+    def supplier_name(self) -> str:
+        return self.supplier.name if self.supplier else ""
+
+
+class TprmSettings(Base):
+    """Configuracion del modulo de proveedores por organizacion (singleton por org).
+
+    Centraliza lo configurable desde Admin (feedback cliente): lista editable de
+    regiones operativas (punto 4), plantilla y textos de email estandar EN/ES
+    (punto 7) y destinatarios de notificacion post-review por region (punto 11)."""
+    __tablename__ = "tprm_settings"
+    id = Column(Integer, primary_key=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), unique=True, nullable=False, index=True)
+    # Punto 4 — regiones operativas editables (independientes del pais y de las sedes BCM)
+    operating_regions = Column(JSON, nullable=True)       # ["Global","UK","Spain",...]
+    # Punto 7 — plantilla y email estandar (bilingue)
+    default_template_code = Column(String(64), nullable=True)
+    standard_email_subject_en = Column(String(255), nullable=True)
+    standard_email_subject_es = Column(String(255), nullable=True)
+    standard_email_body_en = Column(Text, nullable=True)
+    standard_email_body_es = Column(Text, nullable=True)
+    # Punto 7 — modulos add-on que se disparan automaticamente segun perfil del proveedor
+    trigger_modules = Column(JSON, nullable=True)         # {personal_data: "TPL-...", ai_usage: "...", ...}
+    # Punto 11 — destinatarios de notificacion post-review, por region
+    # {"__default__": {"finance": ["..."], "legal": ["..."]}, "Spain": {...}}
+    review_notify_recipients = Column(JSON, nullable=True)
+    review_notify_enabled = Column(Boolean, default=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),
+                        onupdate=lambda: datetime.now(timezone.utc))
 
 
 class TPRMTemplate(Base):
