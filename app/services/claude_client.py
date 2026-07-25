@@ -150,6 +150,13 @@ def structured_message(api_key: str, *, model: str, max_tokens: int,
         "description": tool_description or f"Entrega el resultado estructurado de {tool_name}",
         "input_schema": input_schema,
     }]
+    # Extraer datos de un documento debe ser REPRODUCIBLE: los mismos documentos
+    # tienen que dar el mismo resultado, se corra en el servidor de pruebas o en
+    # el del cliente. Por defecto la API usa temperatura ~1 (aleatoria), que es
+    # por lo que dos corridas del mismo pack daban cifras distintas. Con
+    # temperature=0 la salida es casi determinista. Se puede sobrescribir por
+    # kwargs para los pocos casos que quieran variedad (narrativas).
+    kwargs.setdefault("temperature", 0)
     msg = create_message(
         api_key, model=model, max_tokens=max_tokens, system=system,
         messages=messages, retries=retries,
