@@ -736,22 +736,63 @@ const ViewIngest = (() => {
 
   // ---------- 5. Revision (solo lo dudoso) ----------
 
+  // Nombre legible de un campo (name -> "Name", rto_hours -> "Rto hours").
+  // Evita ensenar claves tecnicas crudas al usuario.
+  const _FIELD_ES = {
+    name: 'Nombre', code: 'Código', description: 'Descripción', family: 'Familia',
+    criticality: 'Criticidad', rto_hours: 'RTO (horas)', rpo_hours: 'RPO (horas)',
+    mtpd_hours: 'MTPD (horas)', rto_label: 'RTO', rpo_label: 'RPO',
+    site_type: 'Tipo de sede', country: 'País', city: 'Ciudad',
+    strategy_type: 'Tipo de estrategia', requirements: 'Requisitos',
+    resources: 'Recursos', plan_type: 'Tipo de plan', scope: 'Alcance',
+    dependency_type: 'Tipo de dependencia', responsible_area: 'Área responsable',
+    impacts: 'Impactos', test_type: 'Tipo de prueba', result: 'Resultado',
+  };
+  function _fieldLabel(k) {
+    if (_FIELD_ES[k] && (localStorage.getItem('riskhub_lang') || 'es') === 'es') return _FIELD_ES[k];
+    return String(k).replace(/_/g, ' ').replace(/^\w/, c => c.toUpperCase());
+  }
+
+  // Campos que se pueden editar a mano (texto/numero). Los JSON complejos y los
+  // ids no se editan aqui.
+  function _editableFields(rec) {
+    const src = (rec.after && typeof rec.after === 'object') ? rec.after : {};
+    return Object.keys(src).filter(k =>
+      !k.startsWith('_') && !k.endsWith('_id') && k !== 'id' &&
+      k !== 'organization_id' && k !== 'impacts' && k !== 'sections' &&
+      k !== 'created_at' && k !== 'source' &&
+      (src[k] == null || typeof src[k] !== 'object'));
+  }
+
   function _diff(before, after) {
     const a = after && typeof after === 'object' ? after : {};
     const bfr = before && typeof before === 'object' ? before : {};
     const keys = Object.keys(a).length ? Object.keys(a) : Object.keys(bfr);
-    if (!keys.length) return '<span class="text-muted">-</span>';
-    return keys.slice(0, 12).map(k => {
+    const shown = keys.filter(k => !k.startsWith('_')).slice(0, 12);
+    if (!shown.length) return '<span class="text-muted">-</span>';
+    return shown.map(k => {
       const oldV = bfr[k];
       const newV = a[k];
       const changed = JSON.stringify(oldV) !== JSON.stringify(newV);
-      if (oldV !== undefined && changed) {
-        return `<div><b>${UI.esc(k)}:</b>
-          <s style="color:var(--text-subtle);">${UI.esc(_val(oldV))}</s>
-          &rarr; <span style="color:var(--brand-purple);">${UI.esc(_val(newV))}</span></div>`;
+      if (oldV !== undefined && oldV !== null && oldV !== '' && changed) {
+        return `<div style="margin-bottom:3px;"><b>${UI.esc(_fieldLabel(k))}:</b>
+          <span style="color:var(--text-subtle);">${t('ingest.review.was')}
+            <s>${UI.esc(_val(oldV))}</s></span>
+          &nbsp;<span style="color:var(--brand-purple);">${t('ingest.review.now')}
+            <b>${UI.esc(_val(newV))}</b></span></div>`;
       }
-      return `<div><b>${UI.esc(k)}:</b> ${UI.esc(_val(newV !== undefined ? newV : oldV))}</div>`;
+      return `<div style="margin-bottom:3px;"><b>${UI.esc(_fieldLabel(k))}:</b>
+        ${UI.esc(_val(newV !== undefined ? newV : oldV))}</div>`;
     }).join('');
+  }
+
+  function _dupNote(rec) {
+    const dup = rec.after && rec.after._possible_duplicate;
+    if (!dup || !dup.length) return '';
+    const list = dup.slice(0, 3).map(d => UI.esc(`${d.name || ''}`.trim() || ('#' + d.id))).join(', ');
+    return `<div style="margin-top:6px;padding:8px 10px;background:var(--brand-orange-4,rgba(214,82,0,.08));
+                border-radius:6px;font-size:12px;">
+      ${t('ingest.review.dup_note', { list })}</div>`;
   }
 
   function _reviewSection() {
@@ -760,57 +801,102 @@ const ViewIngest = (() => {
       <div class="card">
         <h3 style="margin-top:0;">${t('ingest.review.title')}</h3>
         <p style="font-size:13px;color:var(--text-muted);margin:0 0 12px;">${t('ingest.review.hint')}</p>
-        ${_records.length ? `<div style="overflow-x:auto;">
-          <table class="data">
-            <thead><tr>
-              <th>${t('ingest.review.entity')}</th>
-              <th>${t('ingest.review.action')}</th>
-              <th style="text-align:center;">${t('ingest.detail.confidence')}</th>
-              <th>${t('ingest.review.changes')}</th>
-              <th></th>
-            </tr></thead>
-            <tbody>${_records.map((r, i) => `
-              <tr${r.reverted_at ? ' style="opacity:.5;"' : ''}>
-                <td>
-                  <div>${UI.esc(_label('entity', r.entity))}</div>
-                  <div style="font-size:11px;color:var(--text-subtle);" class="mono">
-                    ${UI.esc(r.table_name || '')}#${UI.esc(String(r.record_id))}</div>
-                </td>
-                <td><span class="badge badge-muted">${UI.esc(_label('action', r.action))}</span></td>
-                <td style="text-align:center;">${_confBadge(r.confidence) || '-'}</td>
-                <td style="font-size:12px;line-height:1.6;max-width:420px;">
-                  ${_diff(r.before, r.after)}</td>
-                <td style="white-space:nowrap;">
-                  ${r.reverted_at
-                    ? `<span class="badge badge-muted">${UI.esc(t('ingest.review.reverted'))}</span>`
-                    : `<button class="btn btn-ghost btn-sm" data-revert="${i}">
-                        ${t('ingest.review.revert')}</button>`}
-                </td>
-              </tr>`).join('')}</tbody>
-          </table></div>
-          <p style="font-size:11px;color:var(--text-subtle);margin:8px 0 0;">
+        ${_records.length ? `<div style="display:flex;flex-direction:column;gap:10px;">
+          ${_records.map((r, i) => _reviewRow(r, i)).join('')}
+        </div>
+          <p style="font-size:11px;color:var(--text-subtle);margin:10px 0 0;">
             ${t('ingest.review.count', { n: pending.length })}</p>`
         : `<p class="text-muted">${t('ingest.review.empty')}</p>`}
       </div>`;
   }
 
+  function _reviewRow(r, i) {
+    const done = !!r.reverted_at;
+    const name = (r.after && (r.after.name || r.after.code)) || ('#' + r.record_id);
+    return `<div style="border:1px solid var(--border);border-radius:10px;padding:12px;
+                ${done ? 'opacity:.45;' : ''}">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;">
+        <div style="min-width:0;">
+          <span class="badge badge-muted">${UI.esc(_label('entity', r.entity))}</span>
+          <b style="margin-left:6px;">${UI.esc(String(name))}</b>
+          <span style="font-size:11px;color:var(--text-subtle);margin-left:6px;">
+            ${UI.esc(_label('action', r.action))}</span>
+          ${_confBadge(r.confidence) || ''}
+        </div>
+        <div style="display:flex;gap:6px;flex-shrink:0;">
+          ${done
+            ? `<span class="badge badge-muted">${t('ingest.review.reverted')}</span>`
+            : `<button class="btn btn-ghost btn-xs" data-edit="${i}">${t('ingest.review.edit')}</button>
+               <button class="btn btn-ghost btn-xs" data-accept="${i}">${t('ingest.review.accept')}</button>
+               <button class="btn btn-ghost btn-xs" data-revert="${i}"
+                 style="color:var(--risk-high);">${t('ingest.review.revert')}</button>`}
+        </div>
+      </div>
+      <div style="font-size:12px;line-height:1.6;margin-top:8px;">${_diff(r.before, r.after)}</div>
+      ${_dupNote(r)}
+    </div>`;
+  }
+
   function _wireReview() {
+    const reload = () => { if (_batch) _openBatch(_batch.id); };
     document.querySelectorAll('[data-revert]').forEach(btn => {
       btn.onclick = async () => {
         const rec = _records[Number(btn.dataset.revert)];
-        if (!rec) return;
-        if (!confirm(t('ingest.review.confirm_revert'))) return;
+        if (!rec || !await UI.confirm(t('ingest.review.confirm_revert'))) return;
         btn.disabled = true;
-        try {
-          await Api.post(`/api/ingest/records/${rec.id}/revert`, {});
-          UI.toast(t('ingest.review.reverted_ok'), 'success');
-          if (_batch) _openBatch(_batch.id);
-        } catch (e) {
-          UI.toast(e.message, 'error');
-          btn.disabled = false;
-        }
+        try { await Api.post(`/api/ingest/records/${rec.id}/revert`, {});
+          UI.toast(t('ingest.review.reverted_ok'), 'success'); reload();
+        } catch (e) { UI.toast(e.message, 'error'); btn.disabled = false; }
       };
     });
+    document.querySelectorAll('[data-accept]').forEach(btn => {
+      btn.onclick = async () => {
+        const rec = _records[Number(btn.dataset.accept)];
+        if (!rec) return;
+        btn.disabled = true;
+        try { await Api.post(`/api/ingest/records/${rec.id}/accept`, {});
+          UI.toast(t('ingest.review.accepted_ok'), 'success'); reload();
+        } catch (e) { UI.toast(e.message, 'error'); btn.disabled = false; }
+      };
+    });
+    document.querySelectorAll('[data-edit]').forEach(btn => {
+      btn.onclick = () => _openEditRecord(_records[Number(btn.dataset.edit)]);
+    });
+  }
+
+  function _openEditRecord(rec) {
+    if (!rec) return;
+    const fields = _editableFields(rec);
+    const src = rec.after || {};
+    const rows = fields.map(k => `
+      <div style="margin-bottom:10px;">
+        <label style="font-size:12px;font-weight:600;">${UI.esc(_fieldLabel(k))}</label>
+        <input class="input" style="width:100%;" data-f="${UI.esc(k)}"
+               value="${UI.esc(src[k] == null ? '' : String(src[k]))}">
+      </div>`).join('') || `<p class="text-muted">${t('ingest.review.nothing_editable')}</p>`;
+    UI.openModal(`
+      <h2 style="margin-top:0;">${t('ingest.review.edit_title')}</h2>
+      <p class="text-muted" style="font-size:12px;">${t('ingest.review.edit_help')}</p>
+      <div style="margin-top:12px;max-height:50vh;overflow:auto;">${rows}</div>
+      <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:16px;">
+        <button class="btn btn-ghost" id="ing-edit-cancel">${t('common.cancel')}</button>
+        <button class="btn btn-primary" id="ing-edit-save">${t('common.save')}</button>
+      </div>`, { width: '520px' });
+    document.getElementById('ing-edit-cancel').onclick = UI.closeModal;
+    document.getElementById('ing-edit-save').onclick = async () => {
+      const out = {};
+      document.querySelectorAll('#modal-root [data-f]').forEach(inp => {
+        const orig = src[inp.dataset.f];
+        let v = inp.value;
+        if (typeof orig === 'number') { const n = Number(v); if (isFinite(n)) v = n; }
+        out[inp.dataset.f] = v;
+      });
+      try {
+        await Api.patch(`/api/ingest/records/${rec.id}`, { fields: out });
+        UI.closeModal(); UI.toast(t('ingest.review.saved_ok'), 'success');
+        if (_batch) _openBatch(_batch.id);
+      } catch (e) { UI.toast(e.message, 'error'); }
+    };
   }
 
   // ---------- 6. Conflictos ----------
@@ -828,70 +914,46 @@ const ViewIngest = (() => {
 
   function _conflictCard(c, idx) {
     const cands = c.candidates || [];
-    const winner = JSON.stringify(c.resolved_value);
+    const chosen = JSON.stringify(c.resolved_value);
+    const resolved = c.status === 'user_resolved';
+    // Que dato es, en cristiano: "el RTO del proceso Facturación".
+    const what = `${_fieldLabel(c.field_name)} · ${UI.esc(_label('entity', c.entity))}`;
     return `
       <div style="border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:12px;">
-        <div style="display:flex;justify-content:space-between;align-items:baseline;
-                    flex-wrap:wrap;gap:8px;">
-          <div>
-            <div style="font-size:14px;font-weight:700;">
-              ${UI.esc(_label('entity', c.entity))} ·
-              <span class="mono">${UI.esc(c.field_name || '')}</span>
-            </div>
-            <div style="font-size:11px;color:var(--text-subtle);" class="mono">
-              ${UI.esc(c.table_name || '')}#${UI.esc(String(c.record_id))}</div>
-          </div>
-          <div style="display:flex;gap:6px;align-items:center;">
-            <span class="badge ${c.status === 'pending' ? 'badge-medium'
-              : c.status === 'user_resolved' ? 'badge-purple' : 'badge-muted'}">
-              ${UI.esc(_label('conflict_status', c.status))}</span>
-            <span class="badge badge-muted" title="${UI.esc(_label('policy_why', c.policy))}">
-              ${UI.esc(_label('policy', c.policy))}</span>
-          </div>
+        <div style="font-size:14px;font-weight:700;">${what}</div>
+        <p style="font-size:13px;color:var(--text-muted);margin:6px 0 12px;">
+          ${t('ingest.conflicts.explain')}</p>
+
+        <div style="display:flex;flex-direction:column;gap:8px;">
+          ${cands.map((cand, ci) => {
+            const isChosen = JSON.stringify(cand.value) === chosen;
+            return `<div style="display:flex;justify-content:space-between;align-items:center;
+                        gap:12px;padding:10px 12px;border-radius:8px;
+                        border:1px solid ${isChosen ? 'var(--brand-purple)' : 'var(--border)'};
+                        ${isChosen ? 'background:var(--brand-purple-4,rgba(89,0,141,.05));' : ''}">
+              <div style="min-width:0;">
+                <div style="font-size:15px;font-weight:700;">${UI.esc(_val(cand.value))}
+                  ${isChosen ? `<span class="badge badge-purple" style="margin-left:6px;">
+                    ${t('ingest.conflicts.in_use')}</span>` : ''}</div>
+                <div style="font-size:12px;color:var(--text-muted);margin-top:2px;">
+                  ${t('ingest.conflicts.from_doc', { doc: UI.esc(cand.source_filename || '?') })}
+                  ${cand.source_ref ? ` · ${UI.esc(String(cand.source_ref))}` : ''}</div>
+              </div>
+              ${isChosen ? '' : `<button class="btn btn-ghost btn-sm" data-cf="${idx}" data-cand="${ci}"
+                style="flex-shrink:0;">${t('ingest.conflicts.use_this')}</button>`}
+            </div>`;
+          }).join('')}
         </div>
 
-        <p style="font-size:12px;color:var(--text-muted);margin:8px 0 6px;">
-          ${UI.esc(_label('policy_why', c.policy))}</p>
-
-        <div style="overflow-x:auto;">
-          <table class="data">
-            <thead><tr>
-              <th>${t('ingest.conflicts.value')}</th>
-              <th>${t('ingest.conflicts.source')}</th>
-              <th style="text-align:center;">${t('ingest.detail.confidence')}</th>
-              <th></th>
-            </tr></thead>
-            <tbody>
-              ${cands.map((cand, ci) => {
-                const isWinner = JSON.stringify(cand.value) === winner;
-                return `<tr${isWinner ? ' style="background:var(--brand-purple-4);"' : ''}>
-                  <td><b>${UI.esc(_val(cand.value))}</b>
-                    ${isWinner ? ` <span class="badge badge-purple">${UI.esc(t('ingest.conflicts.winner'))}</span>` : ''}</td>
-                  <td style="font-size:12px;">
-                    ${UI.esc(cand.source_filename || '-')}
-                    ${cand.source_ref ? `<div style="font-size:11px;color:var(--text-subtle);" class="mono">
-                      ${UI.esc(String(cand.source_ref))}</div>` : ''}
-                    ${cand.sha256 ? `<div style="font-size:10px;color:var(--text-subtle);" class="mono">
-                      ${UI.esc(String(cand.sha256).slice(0, 12))}</div>` : ''}
-                  </td>
-                  <td style="text-align:center;">${_confBadge(cand.confidence) || '-'}</td>
-                  <td>${isWinner ? '' : `<button class="btn btn-ghost btn-sm"
-                    data-cf="${idx}" data-cand="${ci}">${t('ingest.conflicts.use_this')}</button>`}</td>
-                </tr>`;
-              }).join('')}
-            </tbody>
-          </table>
-        </div>
-
-        <div style="display:flex;gap:8px;align-items:flex-end;margin-top:10px;flex-wrap:wrap;">
+        <div style="display:flex;gap:8px;align-items:flex-end;margin-top:12px;flex-wrap:wrap;">
           <div style="flex:1 1 220px;">
-            <label for="ing-cf-custom-${idx}">${t('ingest.conflicts.custom_value')}</label>
-            <input type="text" id="ing-cf-custom-${idx}" style="width:100%;" maxlength="500">
+            <label style="font-size:12px;" for="ing-cf-custom-${idx}">${t('ingest.conflicts.custom_value')}</label>
+            <input type="text" id="ing-cf-custom-${idx}" class="input" style="width:100%;" maxlength="500">
           </div>
-          <button class="btn btn-ghost btn-sm" data-cf-custom="${idx}">${t('ingest.conflicts.force')}</button>
+          <button class="btn btn-ghost btn-sm" data-cf-custom="${idx}">${t('ingest.conflicts.use_custom')}</button>
         </div>
-        <p style="font-size:11px;color:var(--text-subtle);margin:8px 0 0;">
-          ${t('ingest.conflicts.override_note')}</p>
+        <p style="font-size:12px;color:var(--text-subtle);margin:10px 0 0;">
+          ${resolved ? t('ingest.conflicts.you_chose') : t('ingest.conflicts.auto_note')}</p>
       </div>`;
   }
 
