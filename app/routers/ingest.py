@@ -116,6 +116,111 @@ async def ingest_pack(request: Request, files: List[UploadFile] = File(...),
             "message": _t("ingest.queued", lang, n=len(paths))}
 
 
+# ── Documentos (registro dinamico, control del usuario) ──────────────────────
+
+def _doc_d(d) -> dict:
+    return {
+        "id": d.id, "filename": d.filename, "sha256": d.sha256,
+        "size_bytes": d.size_bytes, "format": d.doc_format,
+        "included": bool(d.included), "status": d.status,
+        "doc_kind": d.doc_kind, "confidence": d.confidence,
+        "last_batch_id": d.last_batch_id, "error": d.error,
+        "created_at": d.created_at.isoformat() if d.created_at else None,
+        "analyzed_at": d.analyzed_at.isoformat() if d.analyzed_at else None,
+    }
+
+
+@router.get("/documents")
+def list_documents(db: Session = Depends(get_db), u: User = Depends(get_current_user)):
+    """Documentos del registro de la organizacion, con su estado e inclusion."""
+    from app.services.ingest import document_store as store
+    return [_doc_d(d) for d in store.list_documents(db, _org(u))]
+
+
+@router.post("/documents", status_code=201)
+async def add_documents(request: Request, files: List[UploadFile] = File(...),
+                        analyze: bool = True, tier: str = "deep",
+                        apply_profile: bool = True, db: Session = Depends(get_db),
+                        u: User = Depends(require_analyst)):
+    """Anade documentos al registro. Por defecto se analizan todos los incluidos.
+
+    Subir es aditivo: se pueden anadir documentos mas tarde sin perder lo ya
+    cargado. `analyze=false` los deja registrados sin lanzar el analisis.
+    """
+    from app.services.ingest import document_store as store
+    from app.services.job_queue import enqueue
+    lang = get_lang(request)
+    org = _org(u, lang)
+    collected = await _collect(files, lang)
+
+    added = [store.add_document(db, org, name, data, user_id=u.id)
+             for name, data in collected]
+    db.commit()
+
+    job_id = None
+    if analyze:
+        job = enqueue(db, org, "ingest_analyze", {
+            "org_id": org, "user_id": u.id,
+            "tier": tier if tier in ("deep", "fast") else "deep",
+            "lang": lang, "apply_profile": bool(apply_profile),
+        }, created_by_id=u.id, priority=3, max_attempts=1)
+        db.commit()
+        job_id = job.id
+
+    log_action(db, u.id, "ingest_add_docs", "ingest_document", str(org),
+               {"files": len(added), "analyze": analyze})
+    return {"documents": [_doc_d(d) for d in added], "job_id": job_id}
+
+
+@router.patch("/documents/{doc_id}")
+def update_document(doc_id: int, body: dict, request: Request,
+                    db: Session = Depends(get_db), u: User = Depends(require_analyst)):
+    """Incluye o excluye un documento del analisis. La ultima palabra del usuario."""
+    from app.services.ingest import document_store as store
+    lang = get_lang(request)
+    row = store.set_included(db, _org(u, lang), doc_id, bool(body.get("included", True)))
+    if row is None:
+        raise HTTPException(404, _t("ingest.document_not_found", lang))
+    db.commit()
+    return _doc_d(row)
+
+
+@router.delete("/documents/{doc_id}", status_code=204)
+def delete_document(doc_id: int, request: Request, db: Session = Depends(get_db),
+                    u: User = Depends(require_analyst)):
+    """Quita un documento del registro y borra su copia. No revierte sus datos:
+    para eso esta deshacer (por lote o registro)."""
+    from app.services.ingest import document_store as store
+    lang = get_lang(request)
+    if not store.remove_document(db, _org(u, lang), doc_id):
+        raise HTTPException(404, _t("ingest.document_not_found", lang))
+    db.commit()
+    log_action(db, u.id, "ingest_remove_doc", "ingest_document", str(doc_id), {})
+
+
+@router.post("/analyze", status_code=202)
+def analyze_documents(request: Request, fresh: bool = False, tier: str = "deep",
+                      apply_profile: bool = True, db: Session = Depends(get_db),
+                      u: User = Depends(require_analyst)):
+    """Relanza el analisis sobre todos los documentos incluidos. `fresh` fuerza
+    una lectura nueva (salta la cache por huella)."""
+    from app.services.ingest import document_store as store
+    from app.services.job_queue import enqueue
+    lang = get_lang(request)
+    org = _org(u, lang)
+    if not store.included_documents(db, org):
+        raise HTTPException(422, _t("ingest.no_included_docs", lang))
+    job = enqueue(db, org, "ingest_analyze", {
+        "org_id": org, "user_id": u.id, "fresh": bool(fresh),
+        "tier": tier if tier in ("deep", "fast") else "deep",
+        "lang": lang, "apply_profile": bool(apply_profile),
+    }, created_by_id=u.id, priority=3, max_attempts=1)
+    db.commit()
+    log_action(db, u.id, "ingest_analyze", "ingest_document", str(org),
+               {"fresh": fresh})
+    return {"job_id": job.id, "message": _t("ingest.analyze_queued", lang)}
+
+
 # ── Lotes ────────────────────────────────────────────────────────────────────
 
 def _batch_d(b: IngestBatch) -> dict:

@@ -182,6 +182,47 @@ def run_pack(db, org_id: Optional[int], files: list[tuple[str, bytes]], *,
         return _finish(db, bat, summary, warnings + [str(exc)[:300]], status="failed")
 
 
+def run_from_store(db, org_id: Optional[int], *, user_id: Optional[int] = None,
+                   job_id: Optional[int] = None, tier: str = "deep",
+                   lang: str = "es", apply_profile: bool = True,
+                   use_cache: bool = True, cancel_check=None) -> dict:
+    """Analiza TODOS los documentos incluidos del registro de la organizacion.
+
+    Es lo que permite relanzar el analisis en cualquier momento: coge lo que el
+    usuario tiene marcado para analizar, lo pasa por el pipeline y sella el
+    estado de cada documento. Como la ingesta refleja y no pisa, y la lectura se
+    cachea por huella, reanalizar es seguro y barato: no duplica ni sobrescribe.
+    """
+    from app.models import IngestBatch
+    from app.services.ingest import document_store as store
+
+    docs = store.included_documents(db, org_id)
+    files, doc_by_name = [], {}
+    for row in docs:
+        data = store.load_bytes(row)
+        if data is None:
+            continue
+        files.append((row.filename, data))
+        doc_by_name[row.filename] = row
+
+    if not files:
+        return {"batch_id": None, "status": "failed",
+                "warnings": ["No hay documentos incluidos para analizar."]}
+
+    out = run_pack(db, org_id, files, user_id=user_id, job_id=job_id, tier=tier,
+                   lang=lang, apply_profile=apply_profile, use_cache=use_cache,
+                   cancel_check=cancel_check)
+
+    # Sellar el resultado en cada documento del registro.
+    bat = db.get(IngestBatch, out.get("batch_id")) if out.get("batch_id") else None
+    reports = {r.get("filename"): r for r in ((bat.files if bat else None) or [])}
+    for name, row in doc_by_name.items():
+        store.mark_analyzed(db, row, out.get("batch_id"),
+                            reports.get(name, {"status": "ok"}))
+    db.commit()
+    return out
+
+
 def _check_cancel(cancel_check) -> None:
     if cancel_check and cancel_check():
         raise PackCancelled()
