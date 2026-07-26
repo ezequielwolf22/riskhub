@@ -24,6 +24,7 @@ const ViewIngest = (() => {
   let _estimate = null;
   let _pollTimer = null;
   let _batch = null;
+  let _documents = [];
   let _records = [];
   let _conflicts = [];
   let _profile = null;
@@ -137,12 +138,14 @@ const ViewIngest = (() => {
       ${UI.sectionHeader(t('ingest.title'), t('ingest.subtitle'))}
       <div class="card" id="ing-upload"></div>
       <div id="ing-progress"></div>
+      <div class="card" id="ing-documents"><p class="text-muted">${t('common.loading')}</p></div>
       <div class="card" id="ing-batches"><p class="text-muted">${t('common.loading')}</p></div>
       <div id="ing-detail"></div>
       <div class="card" id="ing-profile"><p class="text-muted">${t('common.loading')}</p></div>
       <div class="card" id="ing-overrides"><p class="text-muted">${t('common.loading')}</p></div>
     `;
     _renderUpload();
+    _loadDocuments();
     _loadBatches();
     _loadProfile();
     _loadOverrides();
@@ -365,15 +368,19 @@ const ViewIngest = (() => {
     if (btn) btn.disabled = true;
     const applyProfile = !!(document.getElementById('ing-apply-profile') || {}).checked;
     try {
+      // Los documentos se registran (persistentes, gestionables) y se analizan
+      // por defecto. Asi quedan disponibles para excluir/quitar/reanalizar.
       const res = await Api.req(
-        `/api/ingest/pack?tier=${encodeURIComponent(_tier())}&apply_profile=${applyProfile}`,
+        `/api/ingest/documents?analyze=true&tier=${encodeURIComponent(_tier())}`
+        + `&apply_profile=${applyProfile}`,
         { method: 'POST', body: _packForm() });
-      UI.toast(res.message || t('ingest.progress.queued'), 'success');
+      UI.toast(t('ingest.docs.added_ok', { n: (res.documents || []).length }), 'success');
       _files = []; _estimate = null;
       _renderFileList();
       const box = document.getElementById('ing-estimate-box');
       if (box) box.innerHTML = '';
-      _startPolling(res.job_id);
+      _loadDocuments();
+      if (res.job_id) _startPolling(res.job_id);
     } catch (e) {
       UI.toast(e.message, 'error');
       if (btn) btn.disabled = false;
@@ -388,8 +395,10 @@ const ViewIngest = (() => {
 
   async function _resumeRunningJob() {
     try {
-      const jobs = await Api.get('/api/jobs', { job_type: JOB_TYPE, limit: 5 });
-      const live = (jobs || []).find(j => j.status === 'pending' || j.status === 'running');
+      const jobs = await Api.get('/api/jobs', { limit: 10 });
+      const live = (jobs || []).find(j =>
+        (j.status === 'pending' || j.status === 'running') &&
+        String(j.job_type || '').indexOf('ingest') >= 0);
       if (live) _startPolling(live.id);
     } catch (e) { /* silencioso: el progreso es accesorio */ }
   }
@@ -405,6 +414,7 @@ const ViewIngest = (() => {
       _renderProgress(job);
       if (['done', 'error', 'cancelled'].indexOf(job.status) >= 0) {
         _stopPolling();
+        _loadDocuments();
         await _loadBatches();
         const bid = job.result && job.result.batch_id;
         if (bid) _openBatch(bid);
@@ -449,6 +459,118 @@ const ViewIngest = (() => {
     };
     const hide = document.getElementById('ing-hide-progress');
     if (hide) hide.onclick = () => { box.innerHTML = ''; };
+  }
+
+  // ---------- 2b. Documentos (registro dinamico) ----------
+
+  async function _loadDocuments() {
+    const box = document.getElementById('ing-documents');
+    if (!box) return;
+    try {
+      _documents = await Api.get('/api/ingest/documents') || [];
+      _renderDocuments();
+    } catch (e) { _err(box, e); }
+  }
+
+  const _DOC_STATUS_BADGE = {
+    pending: 'badge-medium', analyzed: 'badge-low', excluded: 'badge-muted',
+    failed: 'badge-critical', unsupported: 'badge-critical',
+  };
+
+  function _renderDocuments() {
+    const box = document.getElementById('ing-documents');
+    if (!box) return;
+    const docs = _documents || [];
+    const included = docs.filter(d => d.included).length;
+    const rows = docs.map((d, i) => _docRow(d, i)).join('');
+    box.innerHTML = `
+      <div style="display:flex;justify-content:space-between;align-items:baseline;
+                  flex-wrap:wrap;gap:8px;">
+        <h3 style="margin:0;">${t('ingest.docs.title')}</h3>
+        ${docs.length ? `<div style="display:flex;gap:8px;align-items:center;">
+          <label style="display:flex;align-items:center;gap:6px;font-size:12px;
+                        color:var(--text-muted);cursor:pointer;"
+                 title="${UI.esc(t('ingest.docs.reanalyze_fresh_hint'))}">
+            <input type="checkbox" id="ing-fresh"> ${t('ingest.docs.reanalyze_fresh')}
+          </label>
+          <button class="btn btn-primary btn-sm" id="ing-reanalyze"
+            ${included ? '' : 'disabled'}>${t('ingest.docs.reanalyze')}</button>
+        </div>` : ''}
+      </div>
+      <p style="font-size:13px;color:var(--text-muted);margin:6px 0 12px;">${t('ingest.docs.hint')}</p>
+      ${docs.length
+        ? `<div style="display:flex;flex-direction:column;gap:8px;">${rows}</div>
+           <p style="font-size:11px;color:var(--text-subtle);margin:10px 0 0;">
+             ${t('ingest.docs.count', { n: docs.length, included })}</p>`
+        : `<p class="text-muted">${t('ingest.docs.empty')}</p>`}
+    `;
+    _wireDocuments();
+  }
+
+  function _docRow(d, i) {
+    const off = !d.included;
+    const badge = _DOC_STATUS_BADGE[d.status] || 'badge-muted';
+    return `<div style="display:flex;justify-content:space-between;align-items:center;
+                gap:12px;flex-wrap:wrap;border:1px solid var(--border);border-radius:10px;
+                padding:10px 12px;${off ? 'opacity:.55;' : ''}">
+      <div style="min-width:0;flex:1 1 260px;">
+        <div style="font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+          ${UI.esc(d.filename)}</div>
+        <div style="font-size:11px;color:var(--text-subtle);margin-top:2px;
+                    display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
+          ${d.format ? `<span class="badge badge-muted">${UI.esc(d.format)}</span>` : ''}
+          <span class="badge ${badge}">${UI.esc(_label('docs', 'status_' + d.status))}</span>
+          ${d.doc_kind ? `<span class="badge badge-purple">${UI.esc(_label('doc_kind', d.doc_kind))}</span>` : ''}
+          ${d.size_bytes != null ? `<span>${_fmtBytes(d.size_bytes)}</span>` : ''}
+          ${d.error ? `<span style="color:var(--risk-high);">${UI.esc(String(d.error).slice(0,120))}</span>` : ''}
+        </div>
+      </div>
+      <div style="display:flex;gap:10px;align-items:center;flex-shrink:0;">
+        <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;"
+               title="${UI.esc(t('ingest.docs.include_toggle'))}">
+          <input type="checkbox" data-doc-inc="${i}" ${d.included ? 'checked' : ''}>
+          <span style="color:${d.included ? 'var(--risk-low)' : 'var(--text-subtle)'};">
+            ${d.included ? t('ingest.docs.included_on') : t('ingest.docs.included_off')}</span>
+        </label>
+        <button class="btn btn-ghost btn-xs" data-doc-rm="${i}"
+          style="color:var(--risk-high);">${t('ingest.docs.remove')}</button>
+      </div>
+    </div>`;
+  }
+
+  function _wireDocuments() {
+    const reanalyze = document.getElementById('ing-reanalyze');
+    if (reanalyze) reanalyze.onclick = async () => {
+      reanalyze.disabled = true;
+      const fresh = !!(document.getElementById('ing-fresh') || {}).checked;
+      try {
+        const res = await Api.post(`/api/ingest/analyze?fresh=${fresh}`, {});
+        UI.toast(t('ingest.docs.reanalyze_queued'), 'success');
+        if (res.job_id) _startPolling(res.job_id);
+      } catch (e) { UI.toast(e.message, 'error'); reanalyze.disabled = false; }
+    };
+    document.querySelectorAll('[data-doc-inc]').forEach(cb => {
+      cb.onchange = async () => {
+        const d = _documents[Number(cb.dataset.docInc)];
+        if (!d) return;
+        try {
+          await Api.patch(`/api/ingest/documents/${d.id}`, { included: cb.checked });
+          _loadDocuments();
+        } catch (e) { UI.toast(e.message, 'error'); cb.checked = !cb.checked; }
+      };
+    });
+    document.querySelectorAll('[data-doc-rm]').forEach(btn => {
+      btn.onclick = async () => {
+        const d = _documents[Number(btn.dataset.docRm)];
+        if (!d || !await UI.confirm(t('ingest.docs.remove_confirm'))) return;
+        btn.disabled = true;
+        try {
+          await Api.req(`/api/ingest/documents/${d.id}`, { method: 'DELETE' });
+          UI.toast(t('ingest.docs.removed_ok'), 'success');
+          _loadDocuments();
+        } catch (e) { UI.toast(e.message, 'error'); btn.disabled = false; }
+      };
+    });
   }
 
   // ---------- 3. Lotes ----------
