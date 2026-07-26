@@ -174,6 +174,72 @@ def revert_record(db, trace_row, user_id: Optional[int] = None) -> bool:
     return True
 
 
+def restore_record(db, trace_row, user_id: Optional[int] = None) -> bool:
+    """Rehace un registro previamente revertido: deshace el 'deshacer'.
+
+    Es el inverso exacto de `revert_record`, para que 'Deshecho' nunca sea un
+    estado terminal: si el usuario se equivoco al deshacer, vuelve a dejar el
+    registro tal y como lo escribio la ingesta. Un registro que se habia CREADO
+    y luego borrado se re-inserta con su MISMO id para no romper las referencias
+    que apuntaban a el; uno que se habia ACTUALIZADO recupera el estado posterior.
+    """
+    if trace_row is None or not trace_row.reverted_at:
+        return False
+    model = _model_for(trace_row.table_name)
+    if model is None:
+        return False
+    record = db.get(model, trace_row.record_id)
+    after = _restorable(trace_row.after)
+
+    if trace_row.action == "created":
+        if record is None:
+            _recreate(db, model, trace_row, after)
+    elif trace_row.action in ("updated", "linked"):
+        if record is not None and after:
+            _restore(record, after)
+    trace_row.reverted_at = None
+    db.flush()
+    return True
+
+
+def _restorable(snapshot_dict: Optional[dict]) -> dict:
+    """Estado a restaurar sin las claves sinteticas de la revision.
+
+    `_possible_duplicate` y demas anotaciones que empiezan por '_' se guardan en
+    el rastro para pintar la revision, pero no son columnas: no deben intentar
+    escribirse en el registro.
+    """
+    return {k: v for k, v in (snapshot_dict or {}).items() if not k.startswith("_")}
+
+
+def _recreate(db, model, trace_row, after: dict) -> None:
+    """Reinserta un registro borrado con su id original.
+
+    Se parte de los `defaults` de la entidad (por si el alta original relleno
+    columnas obligatorias que el snapshot no captura) y se superpone el estado
+    que la ingesta habia dejado. No se ejecuta `before_write`/`after_write`: sus
+    valores (como un codigo correlativo) ya viven en el snapshot y re-derivarlos
+    daria otro distinto.
+    """
+    from app.services.ingest import contracts
+    spec = contracts.get(trace_row.entity)
+    payload = dict((spec.defaults if spec else None) or {})
+    payload.update(after)
+    coerced = {}
+    for name, value in payload.items():
+        if not hasattr(model, name):
+            continue
+        column = model.__table__.columns.get(name)
+        if column is not None and isinstance(value, str):
+            value = _coerce_datetime(column, value)
+        coerced[name] = value
+    coerced["id"] = trace_row.record_id
+    if hasattr(model, "organization_id"):
+        coerced.setdefault("organization_id", trace_row.organization_id)
+    db.add(model(**coerced))
+    db.flush()
+
+
 def undo_batch(db, batch, user_id: Optional[int] = None) -> dict:
     """Deshace un lote completo. Devuelve el recuento de lo revertido."""
     from app.models import IngestConflict, IngestRecordTrace, IngestSourceMap

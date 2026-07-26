@@ -246,6 +246,7 @@
     "override_not_found": "Forced value not found.",
     "queued": "Pack queued: {n} documents. The agent is reading them.",
     "record_already_reverted": "That record has already been reverted.",
+    "record_not_reverted": "That record is not undone, there is nothing to redo.",
     "record_not_found": "Record not found.",
     "too_many_files": "Too many documents in a single pack (maximum {max}).",
     "unknown_field": "Unknown field: {field}.",
