@@ -31,6 +31,11 @@ from app.services.model_registry import get_model
 
 logger = logging.getLogger("riskhub.ingest.comprehension")
 
+# Version del prompt de extraccion. Al cambiar los prompts se sube este numero
+# para invalidar la cache de lecturas (una lectura vieja podria no reflejar las
+# reglas nuevas). Es lo que permite que la cache por SHA sea segura.
+EXTRACTION_PROMPT_VERSION = "2"
+
 DOC_KINDS = ("bia", "policy", "bcp", "drp", "test_report", "exercise_programme",
              "contact_list", "supplier_list", "risk_assessment", "other")
 
@@ -348,10 +353,63 @@ Reglas especificas del BIA (bcm_scenario_assessment) — son las que mas fallan:
   y horizontes del metodo del cliente que aparecen en el perfil."""
 
 
+def _cache_get(db, org_id, sha256):
+    """Lectura cacheada de un documento por su huella, o None."""
+    if not sha256 or not org_id:
+        return None
+    try:
+        from app.models import IngestDocExtraction
+        row = db.query(IngestDocExtraction).filter_by(
+            organization_id=org_id, sha256=sha256,
+            prompt_version=EXTRACTION_PROMPT_VERSION).first()
+        return row.result if row else None
+    except Exception:
+        logger.debug("ingest: no se pudo leer la cache de extraccion", exc_info=True)
+        return None
+
+
+def _cache_put(db, org_id, sha256, filename, result):
+    if not sha256 or not org_id:
+        return
+    try:
+        from app.models import IngestDocExtraction
+        existing = db.query(IngestDocExtraction).filter_by(
+            organization_id=org_id, sha256=sha256,
+            prompt_version=EXTRACTION_PROMPT_VERSION).first()
+        if existing:
+            existing.result = result
+        else:
+            db.add(IngestDocExtraction(
+                organization_id=org_id, sha256=sha256,
+                prompt_version=EXTRACTION_PROMPT_VERSION,
+                filename=filename, result=result))
+        db.commit()
+    except Exception:
+        db.rollback()
+        logger.debug("ingest: no se pudo guardar la cache de extraccion",
+                     exc_info=True)
+
+
 def build_source_map(db, org_id: Optional[int], document: dict,
                      profile: Optional[dict] = None, lang: str = "es",
-                     tier: str = "deep") -> dict:
-    """Pasada 2: mapa de volcado y filas extraidas de un documento."""
+                     tier: str = "deep", use_cache: bool = True) -> dict:
+    """Pasada 2: mapa de volcado y filas extraidas de un documento.
+
+    Con `use_cache`, la lectura de un documento ya visto (misma huella SHA-256)
+    se reutiliza en vez de volver a llamar al modelo: hace que re-importar el
+    mismo documento sea reproducible y gratis. Poner `use_cache=False` fuerza
+    una lectura fresca.
+    """
+    sha = document.get("sha256")
+    if use_cache:
+        cached = _cache_get(db, org_id, sha)
+        if cached is not None:
+            logger.info("ingest: lectura reutilizada de cache para %s",
+                        document.get("filename"))
+            cached = dict(cached)
+            cached["from_cache"] = True
+            return cached
+
     api_key, model = _api_key_and_model(db, org_id, tier)
 
     profile_block = ""
@@ -399,6 +457,9 @@ def build_source_map(db, org_id: Optional[int], document: dict,
     except Exception:
         logger.warning("ingest: el pase de completitud fallo; se sigue con lo "
                        "extraido en la primera lectura", exc_info=True)
+    # Guardar la lectura completa para que re-importar este documento sea
+    # reproducible y no cueste otra llamada al modelo.
+    _cache_put(db, org_id, sha, document.get("filename"), smap)
     return smap
 
 

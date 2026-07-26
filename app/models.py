@@ -3569,6 +3569,27 @@ class IngestSourceMap(Base):
     created_at      = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
 
+class IngestDocExtraction(Base):
+    """Cache de la lectura de un documento, por su huella SHA-256.
+
+    Un LLM no es determinista ni a temperatura 0: el mismo documento leido dos
+    veces da resultados distintos. Para que RE-IMPORTAR el mismo documento sea
+    reproducible (y no cueste otra llamada al modelo), la lectura completa se
+    guarda aqui indexada por la huella del fichero. Al reimportar un documento
+    con la misma huella, se reutiliza esta lectura en vez de volver a llamar al
+    modelo. `prompt_version` invalida la cache cuando cambia el prompt de
+    extraccion.
+    """
+    __tablename__ = "ingest_doc_extractions"
+    id              = Column(Integer, primary_key=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), index=True)
+    sha256          = Column(String(64), nullable=False, index=True)
+    prompt_version  = Column(String(16), nullable=False)
+    filename        = Column(String(255), nullable=True)
+    result          = Column(JSON, nullable=True)   # el source-map completo con filas
+    created_at      = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+
 class IngestRecordTrace(Base):
     """Rastro por registro tocado: permite revertir uno solo, no solo el lote."""
     __tablename__ = "ingest_record_traces"
