@@ -29,6 +29,52 @@ logger = logging.getLogger("riskhub.ingest.materializer")
 # Por debajo de esta confianza, el registro se crea pero pide revision humana.
 REVIEW_THRESHOLD = 0.75
 
+# Valores de error de hoja de calculo. Una celda con una formula rota exporta
+# "#¡REF!", "#N/A", etc. No es un dato ni una identidad: si se cuela como codigo
+# de un escenario, cuatro escenarios distintos comparten "#¡REF!" y se funden en
+# uno. Se tratan como celda vacia. Es generico: vale para cualquier Excel roto.
+_EXCEL_ERRORS = {
+    "#ref!", "#value!", "#name?", "#n/a", "#num!", "#null!", "#div/0!",
+    "#getting_data", "#spill!", "#calc!", "#field!", "#unknown!", "#blocked!",
+    "#connect!", "#busy!", "#na", "n/a", "#error", "#ref",
+}
+
+
+def _is_excel_error(text: str) -> bool:
+    """True si el texto es un valor de error de Excel (con o sin ¡/¿)."""
+    t = str(text).strip().lower().replace("¡", "").replace("¿", "")
+    return t in _EXCEL_ERRORS
+
+
+def _blank(value: Any) -> bool:
+    """Un hueco: None, cadena vacia o coleccion vacia. El 0 NO es un hueco."""
+    if value is None:
+        return True
+    if isinstance(value, str):
+        return value.strip() == ""
+    if isinstance(value, (dict, list)):
+        return len(value) == 0
+    return False
+
+
+def _is_placeholder(model, name: str, value: Any) -> bool:
+    """True si `value` es el DEFAULT de la columna, no un dato real.
+
+    Un proceso creado sin criticidad recibe 'medium' por defecto. Eso es un
+    marcador del sistema, no una decision de nadie: el documento debe poder
+    rellenarlo. Un valor DISTINTO del default si es real y no se pisa. Generico:
+    no sabe de criticidad, solo compara con el default declarado de la columna.
+    """
+    col = model.__table__.columns.get(name)
+    if col is None or col.default is None:
+        return False
+    if getattr(col.default, "is_scalar", False):
+        try:
+            return value == col.default.arg
+        except Exception:
+            return False
+    return False
+
 
 class MaterializationResult:
     def __init__(self):
@@ -220,30 +266,44 @@ def _create(db, org_id, batch, spec, model, values, confidence,
 def _update(db, org_id, batch, spec, model, record, values, fmap, confidence,
             source_filename, source_ref, sha256, document_date, source_map_id,
             result, entity_key) -> None:
-    """Actualiza un registro existente respetando overrides y conflictos."""
+    """Refleja lo que dice el documento SIN pisar lo que ya existe.
+
+    Regla del modulo (reflejar, no modificar): la ingesta no cambia un dato que
+    ya tiene valor. Un HUECO se rellena (reflejar y completar). Un valor que ya
+    existe y DIFIERE no se toca: se levanta como PROPUESTA de cambio (conflicto)
+    para que el usuario decida. Asi una importacion nunca destruye nada; en el
+    peor caso deja una propuesta encima de la mesa. Un campo corregido a mano
+    (override) es intocable, ni siquiera se propone.
+    """
     before = batch_mod.snapshot(record, spec)
     protected = batch_mod.overridden_fields(db, org_id, model.__tablename__, record.id)
-    changed = False
+    filled = False
     had_conflict = False
 
     for name, incoming in values.items():
         if name in protected:
-            # Correccion del usuario: intocable. Ni siquiera se registra como
-            # conflicto, porque no lo es: la decision ya esta tomada.
+            # Correccion del usuario: intocable. La decision ya esta tomada.
             continue
         if not hasattr(record, name):
             continue
         current = getattr(record, name, None)
-        if current in (None, "") or _same(current, incoming):
+        if _blank(current) or _is_placeholder(model, name, current):
+            # Hueco (o default del sistema): se rellena. Reflejar mas completo,
+            # nunca destructivo.
             if not _same(current, incoming):
                 setattr(record, name, incoming)
-                changed = True
+                filled = True
+            continue
+        if _same(current, incoming):
             continue
 
+        # Ya hay un valor y el documento trae otro distinto: NO se sobrescribe.
+        # Se propone el cambio para que el usuario elija; la politica del campo
+        # solo marca cual se recomienda, no lo aplica sola.
         spec_field = fmap.get(name)
         policy = spec_field.conflict_policy if spec_field else "latest"
         candidates = [
-            conflicts_mod.Candidate(current, source_filename="(ya en RiskHub)"),
+            conflicts_mod.Candidate(current, source_filename="valor ya cargado"),
             conflicts_mod.Candidate(incoming, source_filename=source_filename,
                                     source_ref=source_ref, sha256=sha256,
                                     confidence=confidence,
@@ -255,9 +315,6 @@ def _update(db, org_id, batch, spec, model, record, values, fmap, confidence,
                                       name, candidates, resolution)
         had_conflict = True
         result.conflicts += 1
-        if resolution["decided"] and not _same(current, resolution["value"]):
-            setattr(record, name, resolution["value"])
-            changed = True
 
     if hasattr(record, "import_batch_id"):
         record.import_batch_id = getattr(batch, "id", None)
@@ -267,11 +324,11 @@ def _update(db, org_id, batch, spec, model, record, values, fmap, confidence,
     db.flush()
 
     batch_mod.trace(db, batch, entity_key, model.__tablename__, record.id,
-                    "updated" if changed else "linked", before=before,
+                    "updated" if filled else "linked", before=before,
                     after=batch_mod.snapshot(record, spec),
                     confidence=confidence, needs_review=needs_review,
                     source_map_id=source_map_id)
-    if changed:
+    if filled:
         result._bump(result.updated, entity_key)
     else:
         result._bump(result.linked, entity_key)
@@ -292,11 +349,16 @@ def _clean_row(raw: dict, spec, fmap: dict, writable: set,
 
     values: dict = {}
     for name, value in raw.items():
+        # Una celda de error de Excel ("#¡REF!") no es dato ni identidad: se
+        # trata como vacia antes de nada, tambien en las referencias.
+        if isinstance(value, str) and _is_excel_error(value):
+            value = None
         # Las referencias por clave natural (_ref_scenario_id) sobreviven al
         # filtrado: las consume _resolve_references justo despues, y sin ellas
         # una valoracion nunca encontraria su escenario.
         if name.startswith("_ref_"):
-            values[name] = value
+            if value not in (None, ""):
+                values[name] = value
             continue
         if name.startswith("_") or name not in writable:
             continue
@@ -398,11 +460,9 @@ def _resolve_references(db, spec, values: dict, result: MaterializationResult,
         target_spec = contracts.get(target_entity)
         if target_spec is None:
             continue
-        match = reconciler.find_match(db, target_spec, org_id,
-                                      {target_field: natural},
-                                      name_field=target_field)
-        if match.matched:
-            values[fname] = match.record.id
+        resolved = _match_any_natural(db, target_spec, org_id, natural, target_field)
+        if resolved is not None:
+            values[fname] = resolved
         else:
             result.warnings.append(
                 f"{spec.label}: no se encontro {target_entity} '{natural}'"
@@ -412,3 +472,23 @@ def _resolve_references(db, spec, values: dict, result: MaterializationResult,
     # al constructor del modelo como argumentos inexistentes.
     for leftover in [k for k in values if k.startswith("_ref_")]:
         values.pop(leftover)
+
+
+def _match_any_natural(db, target_spec, org_id, natural, preferred_field):
+    """Resuelve una referencia contra CUALQUIER clave natural del destino.
+
+    El documento puede citar un escenario por su codigo ("ALT.05") o por su
+    nombre ("Caida de las comunicaciones"); ambos deben resolver al mismo
+    registro. Se prueba primero el campo declarado en `references` y luego el
+    resto de claves naturales de una sola columna. Generico para toda entidad.
+    """
+    fields = [preferred_field]
+    for key_fields in (target_spec.natural_keys or ()):
+        if len(key_fields) == 1 and key_fields[0] not in fields:
+            fields.append(key_fields[0])
+    for f in fields:
+        match = reconciler.find_match(db, target_spec, org_id, {f: natural},
+                                      name_field=f)
+        if match.matched:
+            return match.record.id
+    return None

@@ -112,9 +112,13 @@ register(EntitySpec(
     key="bcm_scenario",
     model="BCMScenario",
     label="Escenario de indisponibilidad",
-    # Identidad por CODIGO. El nombre es descriptivo y varios escenarios pueden
-    # compartirlo: identificar por nombre los colapsaba en uno solo.
-    natural_keys=(("code",),),
+    # Identidad por CODIGO si lo hay y es valido; si no, por NOMBRE normalizado.
+    # Muchos BIA traen el codigo roto ("#¡REF!"): sin la clave por nombre, cuatro
+    # escenarios distintos con el codigo roto se fundian en uno. La comparacion
+    # por nombre es EXACTA (normalizada), no por parecido, asi que "Caida de la
+    # infraestructura AWS" y "Caida de las comunicaciones" siguen siendo dos.
+    natural_keys=(("code",), ("name",)),
+    normalizer=normalize_name,
     before_write=_code_setter("ESC", "BCMScenario", 3),
     provided_by_hook=("code",),
     fields=(
@@ -136,7 +140,9 @@ register(EntitySpec(
     # no se duplica. Es clave exacta por ids, sin riesgo de fusion indebida.
     natural_keys=(("scenario_id", "location_id"),),
     depends_on=("bcm_scenario", "bcm_location"),
-    references={"scenario_id": ("bcm_scenario", "code"),
+    # El escenario se referencia por NOMBRE: es como lo nombra el BIA (cada
+    # bloque encabezado por el nombre del escenario) y su codigo suele venir roto.
+    references={"scenario_id": ("bcm_scenario", "name"),
                 "location_id": ("bcm_location", "name")},
     fields=(
         FieldSpec("scenario_id", type="int", conflict_policy="first"),
@@ -225,7 +231,7 @@ register(EntitySpec(
     model="BCPStrategy",
     label="Estrategia de continuidad",
     depends_on=("bcm_scenario", "business_process", "bcm_location"),
-    references={"scenario_id": ("bcm_scenario", "code"),
+    references={"scenario_id": ("bcm_scenario", "name"),
                 "process_id": ("business_process", "name"),
                 "location_id": ("bcm_location", "name")},
     # Identidad por escenario + nombre: dos estrategias con el mismo nombre bajo

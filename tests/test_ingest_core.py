@@ -296,7 +296,9 @@ def test_deshacer_el_lote_deja_la_base_como_estaba(db, bat):
 
 
 def test_deshacer_restaura_el_valor_previo_de_lo_actualizado(db, bat):
-    db.add(BusinessProcess(organization_id=ORG, name="Facturacion", rto_hours=24))
+    # Un registro con un hueco (rto sin informar): la ingesta RELLENA el hueco,
+    # que es la unica forma en que una importacion cambia un registro existente.
+    db.add(BusinessProcess(organization_id=ORG, name="Facturacion"))
     db.commit()
 
     materialize(db, ORG, bat, "business_process",
@@ -306,7 +308,7 @@ def test_deshacer_restaura_el_valor_previo_de_lo_actualizado(db, bat):
 
     batch_mod.undo_batch(db, bat)
     p = db.query(BusinessProcess).filter_by(organization_id=ORG).one()
-    assert p.rto_hours == 24   # el valor original, no borrado ni pisado
+    assert p.rto_hours is None   # vuelve al hueco original, no se inventa nada
 
 
 def test_revertir_un_solo_registro(db, bat):
