@@ -246,6 +246,7 @@
     "override_not_found": "Valor forzado no encontrado.",
     "queued": "Pack en cola: {n} documentos. El agente los esta leyendo.",
     "record_already_reverted": "Ese registro ya se habia revertido.",
+    "record_not_reverted": "Ese registro no esta deshecho, no hay nada que rehacer.",
     "record_not_found": "Registro no encontrado.",
     "too_many_files": "Demasiados documentos en un solo pack (maximo {max}).",
     "unknown_field": "Campo desconocido: {field}.",

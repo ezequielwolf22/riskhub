@@ -825,7 +825,8 @@ const ViewIngest = (() => {
         </div>
         <div style="display:flex;gap:6px;flex-shrink:0;">
           ${done
-            ? `<span class="badge badge-muted">${t('ingest.review.reverted')}</span>`
+            ? `<span class="badge badge-muted">${t('ingest.review.reverted')}</span>
+               <button class="btn btn-ghost btn-xs" data-restore="${i}">${t('ingest.review.restore')}</button>`
             : `<button class="btn btn-ghost btn-xs" data-edit="${i}">${t('ingest.review.edit')}</button>
                <button class="btn btn-ghost btn-xs" data-accept="${i}">${t('ingest.review.accept')}</button>
                <button class="btn btn-ghost btn-xs" data-revert="${i}"
@@ -856,6 +857,16 @@ const ViewIngest = (() => {
         btn.disabled = true;
         try { await Api.post(`/api/ingest/records/${rec.id}/accept`, {});
           UI.toast(t('ingest.review.accepted_ok'), 'success'); reload();
+        } catch (e) { UI.toast(e.message, 'error'); btn.disabled = false; }
+      };
+    });
+    document.querySelectorAll('[data-restore]').forEach(btn => {
+      btn.onclick = async () => {
+        const rec = _records[Number(btn.dataset.restore)];
+        if (!rec) return;
+        btn.disabled = true;
+        try { await Api.post(`/api/ingest/records/${rec.id}/restore`, {});
+          UI.toast(t('ingest.review.restored_ok'), 'success'); reload();
         } catch (e) { UI.toast(e.message, 'error'); btn.disabled = false; }
       };
     });

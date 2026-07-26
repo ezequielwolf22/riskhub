@@ -210,6 +210,22 @@ def revert(trace_id: int, request: Request, db: Session = Depends(get_db),
     return {"reverted": ok, "trace_id": trace_id}
 
 
+@router.post("/records/{trace_id}/restore")
+def restore(trace_id: int, request: Request, db: Session = Depends(get_db),
+            u: User = Depends(require_analyst)):
+    """Rehace un registro deshecho: deshacer nunca es la ultima palabra."""
+    from app.services.ingest.batch import restore_record
+    lang = get_lang(request)
+    org = _org(u, lang)
+    t = _chk_trace(db, trace_id, org, lang)
+    if not t.reverted_at:
+        raise HTTPException(409, _t("ingest.record_not_reverted", lang))
+    ok = restore_record(db, t, user_id=u.id)
+    db.commit()
+    log_action(db, u.id, "restore", t.table_name, str(t.record_id), {"trace": trace_id})
+    return {"restored": ok, "trace_id": trace_id}
+
+
 class RecordEditIn(BaseModel):
     fields: dict
 
