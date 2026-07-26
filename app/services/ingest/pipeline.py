@@ -76,9 +76,14 @@ def estimate_pack(files: list[tuple[str, bytes]], tier: str = "deep") -> dict:
 def run_pack(db, org_id: Optional[int], files: list[tuple[str, bytes]], *,
              user_id: Optional[int] = None, job_id: Optional[int] = None,
              tier: str = "deep", lang: str = "es",
-             apply_profile: bool = True,
+             apply_profile: bool = True, use_cache: bool = True,
              cancel_check=None) -> dict:
-    """Ingesta completa de un pack. Devuelve el resumen del lote."""
+    """Ingesta completa de un pack. Devuelve el resumen del lote.
+
+    Con `use_cache` (por defecto), la lectura de un documento ya visto se
+    reutiliza por su huella SHA-256: re-importar el mismo pack da el mismo
+    resultado y no vuelve a gastar en llamadas al modelo.
+    """
     estimate = estimate_pack(files, tier)
     bat = batch_mod.create_batch(
         db, org_id, module="bcm", job_id=job_id, user_id=user_id,
@@ -135,7 +140,8 @@ def run_pack(db, org_id: Optional[int], files: list[tuple[str, bytes]], *,
             report = {"filename": doc["filename"], "format": doc["format"]}
             try:
                 smap = comprehension.build_source_map(
-                    db, org_id, doc, profile=profile_data, lang=lang, tier=tier)
+                    db, org_id, doc, profile=profile_data, lang=lang, tier=tier,
+                    use_cache=use_cache)
                 map_row = _save_source_map(db, org_id, bat, smap)
                 report.update({
                     "doc_kind": smap.get("doc_kind"),
