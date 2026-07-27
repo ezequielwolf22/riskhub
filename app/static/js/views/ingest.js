@@ -26,6 +26,9 @@ const ViewIngest = (() => {
   let _batch = null;
   let _documents = [];
   let _records = [];
+  let _reviewFilterEntity = 'all';
+  let _reviewFilterKind = 'all';
+  let _reviewCollapsed = {};
   let _conflicts = [];
   let _profile = null;
   let _overrides = [];
@@ -1003,19 +1006,63 @@ const ViewIngest = (() => {
       ${t('ingest.review.dup_note', { list })}</div>`;
   }
 
+  // Que clase de duda es: posible duplicado, baja confianza, u otra.
+  function _recordKind(r) {
+    if (r.after && r.after._possible_duplicate) return 'duplicate';
+    if (r.confidence != null && r.confidence < 0.75) return 'low_confidence';
+    return 'other';
+  }
+
   function _reviewSection() {
     const pending = _records.filter(r => !r.reverted_at);
-    return `
-      <div class="card">
-        <h3 style="margin-top:0;">${t('ingest.review.title')}</h3>
-        <p style="font-size:13px;color:var(--text-muted);margin:0 0 12px;">${t('ingest.review.hint')}</p>
-        ${_records.length ? `<div style="display:flex;flex-direction:column;gap:10px;">
-          ${_records.map((r, i) => _reviewRow(r, i)).join('')}
+    if (!_records.length) {
+      return `<div class="card"><h3 style="margin-top:0;">${t('ingest.review.title')}</h3>
+        <p class="text-muted">${t('ingest.review.empty')}</p></div>`;
+    }
+    // Cada registro conserva su indice original en _records (el wiring va por indice)
+    const indexed = _records.map((r, i) => ({ r, i }));
+    const filtered = indexed.filter(({ r }) =>
+      (_reviewFilterEntity === 'all' || r.entity === _reviewFilterEntity) &&
+      (_reviewFilterKind === 'all' || _recordKind(r) === _reviewFilterKind));
+
+    const groups = {};
+    filtered.forEach(x => { (groups[x.r.entity] = groups[x.r.entity] || []).push(x); });
+    const entities = Object.keys(groups).sort();
+
+    const entOpts = ['all', ...Array.from(new Set(indexed.map(x => x.r.entity)))]
+      .map(e => `<option value="${UI.esc(e)}"${e === _reviewFilterEntity ? ' selected' : ''}>${
+        e === 'all' ? t('ingest.review.f_all_entities') : UI.esc(_label('entity', e))}</option>`).join('');
+    const kindOpts = [['all', 'f_all_kinds'], ['low_confidence', 'f_low_conf'],
+                      ['duplicate', 'f_duplicate']]
+      .map(([v, k]) => `<option value="${v}"${v === _reviewFilterKind ? ' selected' : ''}>${
+        t('ingest.review.' + k)}</option>`).join('');
+
+    const sections = entities.map(ent => {
+      const items = groups[ent];
+      const collapsed = !!_reviewCollapsed[ent];
+      return `<div style="border:1px solid var(--border);border-radius:10px;margin-bottom:10px;overflow:hidden;">
+        <div data-review-toggle="${UI.esc(ent)}" style="display:flex;justify-content:space-between;
+             align-items:center;padding:10px 14px;background:var(--bg-2);cursor:pointer;user-select:none;">
+          <div style="font-weight:700;">${UI.esc(_label('entity', ent))}
+            <span class="badge badge-medium" style="margin-left:6px;">${items.length}</span></div>
+          <span style="color:var(--text-subtle);font-size:14px;">${collapsed ? '▸' : '▾'}</span>
         </div>
-          <p style="font-size:11px;color:var(--text-subtle);margin:10px 0 0;">
-            ${t('ingest.review.count', { n: pending.length })}</p>`
-        : `<p class="text-muted">${t('ingest.review.empty')}</p>`}
+        ${collapsed ? '' : `<div style="padding:10px;display:flex;flex-direction:column;gap:8px;">
+          ${items.map(x => _reviewRow(x.r, x.i)).join('')}</div>`}
       </div>`;
+    }).join('');
+
+    return `<div class="card">
+      <h3 style="margin-top:0;">${t('ingest.review.title')}</h3>
+      <p style="font-size:13px;color:var(--text-muted);margin:0 0 12px;">${t('ingest.review.hint')}</p>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px;">
+        <select id="rev-f-entity" class="input" style="width:auto;min-width:150px;">${entOpts}</select>
+        <select id="rev-f-kind" class="input" style="width:auto;min-width:150px;">${kindOpts}</select>
+        <span style="font-size:12px;color:var(--text-subtle);">${
+          t('ingest.review.count', { n: pending.length })}</span>
+      </div>
+      ${filtered.length ? sections : `<p class="text-muted">${t('ingest.review.none_match')}</p>`}
+    </div>`;
   }
 
   function _reviewRow(r, i) {
@@ -1048,6 +1095,18 @@ const ViewIngest = (() => {
 
   function _wireReview() {
     const reload = () => { if (_batch) _openBatch(_batch.id); };
+    // Filtros y secciones colapsables (re-render local, sin llamada al backend)
+    const fe = document.getElementById('rev-f-entity');
+    if (fe) fe.onchange = () => { _reviewFilterEntity = fe.value; _renderBatch(); };
+    const fk = document.getElementById('rev-f-kind');
+    if (fk) fk.onchange = () => { _reviewFilterKind = fk.value; _renderBatch(); };
+    document.querySelectorAll('[data-review-toggle]').forEach(h => {
+      h.onclick = () => {
+        const e = h.dataset.reviewToggle;
+        _reviewCollapsed[e] = !_reviewCollapsed[e];
+        _renderBatch();
+      };
+    });
     document.querySelectorAll('[data-revert]').forEach(btn => {
       btn.onclick = async () => {
         const rec = _records[Number(btn.dataset.revert)];

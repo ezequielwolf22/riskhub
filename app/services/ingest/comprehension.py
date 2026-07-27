@@ -34,7 +34,7 @@ logger = logging.getLogger("riskhub.ingest.comprehension")
 # Version del prompt de extraccion. Al cambiar los prompts se sube este numero
 # para invalidar la cache de lecturas (una lectura vieja podria no reflejar las
 # reglas nuevas). Es lo que permite que la cache por SHA sea segura.
-EXTRACTION_PROMPT_VERSION = "3"
+EXTRACTION_PROMPT_VERSION = "4"
 
 DOC_KINDS = ("bia", "policy", "bcp", "drp", "test_report", "exercise_programme",
              "contact_list", "supplier_list", "risk_assessment", "other")
@@ -339,8 +339,12 @@ Reglas que no se negocian:
   el numero: los recalcula el motor con el baremo del cliente.
 - El estado de aprobacion de un plan NUNCA se extrae. Que un documento se
   titule "aprobado" no aprueba nada.
-- Pon "confidence" bajo en las filas de las que dudes. Se guardaran igual,
-  marcadas para revision: es mejor que descartarlas.
+- CONFIANZA bien calibrada. Se CONFIADO (0.9 o mas) cuando el dato esta escrito
+  de forma explicita en el documento: no marques como dudoso lo que esta claro,
+  o llenas la revision de falsas alarmas. Reserva la confianza baja (por debajo
+  de 0.75, que pide revision humana) para cuando de verdad estas INFIRIENDO algo
+  que el documento no dice literalmente, o cuando el texto es ambiguo. Un dato
+  copiado tal cual de una celda o una frase clara va con confianza alta.
 - Si una fila se puede leer de dos formas, elige la mas conservadora y anotalo
   en "ambiguities".
 
