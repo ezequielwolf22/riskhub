@@ -20,7 +20,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from app.services.ingest import batch as batch_mod
-from app.services.ingest import comprehension, contracts, reader
+from app.services.ingest import comprehension, consolidation, contracts, reader
 from app.services.ingest.materializer import MaterializationResult, materialize
 
 logger = logging.getLogger("riskhub.ingest.pipeline")
@@ -161,6 +161,20 @@ def run_pack(db, org_id: Optional[int], files: list[tuple[str, bytes]], *,
                 warnings.append(f"{doc['filename']}: {exc}")
             file_reports.append(report)
 
+        # ── Consolidacion: fundir las variantes de escenario en su canonico ──
+        # Leer documento a documento genera variantes del mismo escenario
+        # (AWS/GCP/OVH, ingles/espanol, redacciones). Aqui, con todo ya extraido,
+        # se agrupan en el catalogo canonico antes de recalcular.
+        consol = {}
+        try:
+            _check_cancel(cancel_check)
+            consol = consolidation.consolidate_scenarios(db, org_id, lang=lang,
+                                                         tier=tier)
+        except PackCancelled:
+            raise
+        except Exception as exc:
+            warnings.append(f"No se pudieron consolidar los escenarios: {exc}")
+
         # ── Verificacion: recalcular y declarar huecos ───────────────────
         gaps = _verify(db, org_id, warnings)
 
@@ -169,6 +183,7 @@ def run_pack(db, org_id: Optional[int], files: list[tuple[str, bytes]], *,
             "linked": result.linked, "needs_review": result.needs_review,
             "conflicts": result.conflicts, "skipped": result.skipped[:50],
             "gaps": gaps, "method": method_summary,
+            "scenario_consolidation": consol,
         })
         bat.files = file_reports
         warnings.extend(result.warnings)
