@@ -3431,6 +3431,9 @@ const I18N_ES = {
       cost: "Coste",
       click_hint: "Haz clic en un lote para ver cómo lo entendió el agente.",
       empty: "Todavía no se ha importado ningún pack.",
+      delete: "Eliminar lote",
+      delete_confirm: "¿Eliminar el lote #{id}? Se deshace lo que volcó y desaparece del historial.",
+      deleted_ok: "Lote eliminado ({n} registros revertidos).",
     },
     batch_status: {
       running: "en curso",

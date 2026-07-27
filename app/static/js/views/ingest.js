@@ -660,6 +660,10 @@ const ViewIngest = (() => {
             ? `<span class="badge badge-orange">${_fmtNum(s.conflicts)}</span>`
             : '0'}</td>
           <td style="text-align:right;">${_cost(b.estimated_cost_usd)}</td>
+          <td style="text-align:center;">${Auth.isAdmin()
+            ? `<button class="btn btn-ghost btn-xs" data-del-batch="${b.id}"
+                 title="${UI.esc(t('ingest.batches.delete'))}"
+                 style="color:var(--risk-high);">✕</button>` : ''}</td>
         </tr>`;
       }).join('');
       box.innerHTML = `
@@ -679,6 +683,7 @@ const ViewIngest = (() => {
               <th style="text-align:right;">${t('ingest.detail.needs_review')}</th>
               <th style="text-align:right;">${t('ingest.detail.conflicts')}</th>
               <th style="text-align:right;">${t('ingest.batches.cost')}</th>
+              <th></th>
             </tr></thead>
             <tbody>${rows}</tbody>
           </table></div>
@@ -690,6 +695,23 @@ const ViewIngest = (() => {
       if (reload) reload.onclick = _loadBatches;
       box.querySelectorAll('tr[data-batch]').forEach(tr => {
         tr.onclick = () => _openBatch(Number(tr.dataset.batch));
+      });
+      box.querySelectorAll('[data-del-batch]').forEach(btn => {
+        btn.onclick = async (e) => {
+          e.stopPropagation();
+          const id = Number(btn.dataset.delBatch);
+          if (!await UI.confirm(t('ingest.batches.delete_confirm', { id }))) return;
+          btn.disabled = true;
+          try {
+            const r = await Api.req(`/api/ingest/batches/${id}`, { method: 'DELETE' });
+            UI.toast(t('ingest.batches.deleted_ok', { n: r.reverted || 0 }), 'success');
+            if (_batch && _batch.id === id) {
+              const det = document.getElementById('ing-detail');
+              if (det) det.innerHTML = ''; _batch = null;
+            }
+            _loadBatches();
+          } catch (e2) { UI.toast(e2.message, 'error'); btn.disabled = false; }
+        };
       });
     } catch (e) {
       _err(box, e);

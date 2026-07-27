@@ -159,11 +159,16 @@ async def add_documents(request: Request, files: List[UploadFile] = File(...),
 
     job_id = None
     if analyze:
+        # dedupe: si ya hay un analisis en cola/curso para esta org, se reutiliza
+        # en vez de crear un segundo lote del mismo pack (el bug de "dos lotes
+        # seguidos"). run_from_store re-lee los documentos incluidos al ejecutarse,
+        # asi que el trabajo pendiente ya recogera lo recien anadido.
         job = enqueue(db, org, "ingest_analyze", {
             "org_id": org, "user_id": u.id,
             "tier": tier if tier in ("deep", "fast") else "deep",
             "lang": lang, "apply_profile": bool(apply_profile),
-        }, created_by_id=u.id, priority=3, max_attempts=1)
+        }, created_by_id=u.id, priority=3, max_attempts=1,
+           dedupe_key=f"ingest_analyze:{org}")
         db.commit()
         job_id = job.id
 
@@ -214,7 +219,8 @@ def analyze_documents(request: Request, fresh: bool = False, tier: str = "deep",
         "org_id": org, "user_id": u.id, "fresh": bool(fresh),
         "tier": tier if tier in ("deep", "fast") else "deep",
         "lang": lang, "apply_profile": bool(apply_profile),
-    }, created_by_id=u.id, priority=3, max_attempts=1)
+    }, created_by_id=u.id, priority=3, max_attempts=1,
+       dedupe_key=f"ingest_analyze:{org}")
     db.commit()
     log_action(db, u.id, "ingest_analyze", "ingest_document", str(org),
                {"fresh": fresh})
@@ -295,6 +301,37 @@ def undo(bid: int, request: Request, db: Session = Depends(get_db),
     result = undo_batch(db, b, user_id=u.id)
     log_action(db, u.id, "undo", "ingest_batch", str(bid), result)
     return result
+
+
+@router.delete("/batches/{bid}", status_code=200)
+def delete_batch(bid: int, request: Request, db: Session = Depends(get_db),
+                 u: User = Depends(require_admin)):
+    """Elimina un lote de la lista: deshace lo que pueda y borra su rastro.
+
+    Primero revierte los datos (si no estaba deshecho ya) y luego quita el lote,
+    sus trazas, conflictos y mapas para que desaparezca del historial. Lo que
+    quede bloqueado por una dependencia se reporta en `failed`.
+    """
+    from app.services.ingest.batch import undo_batch
+    lang = get_lang(request)
+    org = _org(u, lang)
+    b = _chk_batch(db, bid, org, lang)
+
+    result = {"reverted": 0, "failed": []}
+    if b.status != "undone":
+        result = undo_batch(db, b, user_id=u.id)
+
+    db.query(IngestConflict).filter_by(batch_id=bid).delete(synchronize_session=False)
+    db.query(IngestRecordTrace).filter_by(batch_id=bid).delete(synchronize_session=False)
+    db.query(IngestSourceMap).filter_by(batch_id=bid).delete(synchronize_session=False)
+    from app.models import IngestDocument
+    db.query(IngestDocument).filter_by(organization_id=org, last_batch_id=bid).update(
+        {"last_batch_id": None}, synchronize_session=False)
+    db.delete(b)
+    db.commit()
+    log_action(db, u.id, "delete", "ingest_batch", str(bid), result)
+    return {"deleted": bid, "reverted": result.get("reverted", 0),
+            "failed": len(result.get("failed") or [])}
 
 
 @router.post("/records/{trace_id}/revert")

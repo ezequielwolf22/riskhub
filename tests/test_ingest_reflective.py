@@ -85,11 +85,32 @@ def test_una_importacion_no_pisa_un_valor_que_ya_existe(db, bat):
     # NADA se sobrescribio: los valores originales siguen intactos
     assert p.description == "Proceso de facturacion a clientes"
     assert p.criticality == "high"
-    # Las diferencias quedaron como propuestas, para que el usuario decida
-    assert p.needs_review is True
     campos = {c.field_name for c in db.query(IngestConflict).filter_by(
         organization_id=ORG).all()}
-    assert "description" in campos and "criticality" in campos
+    # Solo lo MATERIAL es duda: la criticidad (vocabulario) si; la descripcion
+    # (texto libre) NO — dos redacciones del mismo hecho no son un conflicto.
+    assert "criticality" in campos
+    assert "description" not in campos
+    assert p.needs_review is True
+
+
+def test_una_diferencia_solo_de_texto_no_es_una_duda(db, bat):
+    # Ya existe el proceso con una descripcion. Otro documento la redacta distinto
+    # pero NO cambia ningun dato material.
+    db.add(BusinessProcess(organization_id=ORG, name="Soporte",
+                           description="Atencion a clientes por telefono",
+                           criticality="high"))
+    db.commit()
+    materialize(db, ORG, bat, "business_process",
+                [{"name": "Soporte",
+                  "description": "Servicio de atencion telefonica a clientes"}],
+                source_filename="DRP.docx")
+    db.commit()
+    p = db.query(BusinessProcess).filter_by(organization_id=ORG).one()
+    # Ni conflicto ni revision: una redaccion distinta no es una contradiccion
+    assert db.query(IngestConflict).filter_by(organization_id=ORG).count() == 0
+    assert p.needs_review is not True
+    assert p.description == "Atencion a clientes por telefono"   # se conserva
 
 
 def test_una_importacion_rellena_huecos(db, bat):

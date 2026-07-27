@@ -57,6 +57,26 @@ def _blank(value: Any) -> bool:
     return False
 
 
+def _is_material_conflict(spec_field) -> bool:
+    """Un campo cuya contradiccion merece que el usuario decida.
+
+    Materiales: numeros (RTO/RPO/MTPD, impactos), booleanos (critico si/no) y
+    vocabularios cerrados (criticidad, tipo). Ahi una discrepancia entre dos
+    documentos es una decision de negocio real. El texto libre (nombre,
+    descripcion, notas, requisitos) NO es material: dos redacciones del mismo
+    hecho no son un conflicto y no deben pedir revision.
+    """
+    if spec_field is None:
+        return False
+    if spec_field.type in ("int", "float", "bool"):
+        return True
+    if spec_field.choices:
+        return True
+    if spec_field.conflict_policy in ("min", "max"):
+        return True
+    return False
+
+
 def _is_placeholder(model, name: str, value: Any) -> bool:
     """True si `value` es el DEFAULT de la columna, no un dato real.
 
@@ -297,10 +317,16 @@ def _update(db, org_id, batch, spec, model, record, values, fmap, confidence,
         if _same(current, incoming):
             continue
 
-        # Ya hay un valor y el documento trae otro distinto: NO se sobrescribe.
-        # Se propone el cambio para que el usuario elija; la politica del campo
-        # solo marca cual se recomienda, no lo aplica sola.
+        # Ya hay un valor y el documento trae otro distinto. NO se sobrescribe.
+        # Pero no toda diferencia merece una "duda": que un documento describa un
+        # escenario con otras palabras, o traiga una nota mas larga, no es una
+        # contradiccion — es la misma realidad redactada distinto. Solo se levanta
+        # como conflicto lo MATERIAL: un numero de recuperacion (RTO/RPO/MTPD),
+        # una criticidad, un flag. Lo demas (texto libre) se conserva en silencio.
+        # Sin esto, un pack rico genera cientos de dudas de redaccion sin sentido.
         spec_field = fmap.get(name)
+        if not _is_material_conflict(spec_field):
+            continue
         policy = spec_field.conflict_policy if spec_field else "latest"
         candidates = [
             conflicts_mod.Candidate(current, source_filename="valor ya cargado"),

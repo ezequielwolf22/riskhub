@@ -3427,6 +3427,9 @@ const I18N_EN = {
       cost: "Cost",
       click_hint: "Click a batch to see how the agent understood it.",
       empty: "No pack has been imported yet.",
+      delete: "Delete batch",
+      delete_confirm: "Delete batch #{id}? What it loaded is undone and it disappears from the history.",
+      deleted_ok: "Batch deleted ({n} records reverted).",
     },
     batch_status: {
       running: "running",
