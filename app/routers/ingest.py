@@ -309,9 +309,25 @@ def revert(trace_id: int, request: Request, db: Session = Depends(get_db),
         raise HTTPException(404, _t("ingest.record_not_found", lang))
     if t.reverted_at:
         raise HTTPException(409, _t("ingest.record_already_reverted", lang))
-    ok = revert_record(db, t, user_id=u.id)
-    db.commit()
-    log_action(db, u.id, "revert", t.table_name, str(t.record_id), {"trace": trace_id})
+    table, rec_id = t.table_name, t.record_id
+    # En su propio savepoint: si algo aun depende del registro (clave foranea),
+    # se responde con un mensaje claro en vez de un 500 que ademas dejaria la
+    # sesion rota.
+    savepoint = db.begin_nested()
+    try:
+        ok = revert_record(db, t, user_id=u.id)
+        savepoint.commit()
+        db.commit()
+    except Exception:
+        try:
+            savepoint.rollback()
+        except Exception:  # pragma: no cover
+            pass
+        db.commit()
+        logger.warning("ingest: no se pudo revertir %s:%s", table, rec_id,
+                       exc_info=True)
+        raise HTTPException(409, _t("ingest.revert_failed", lang))
+    log_action(db, u.id, "revert", table, str(rec_id), {"trace": trace_id})
     return {"reverted": ok, "trace_id": trace_id}
 
 

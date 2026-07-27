@@ -247,6 +247,7 @@
     "queued": "Pack queued: {n} documents. The agent is reading them.",
     "record_already_reverted": "That record has already been reverted.",
     "record_not_reverted": "That record is not undone, there is nothing to redo.",
+    "revert_failed": "This record could not be undone because another one depends on it. Undo what references it first, or undo the whole batch.",
     "record_not_found": "Record not found.",
     "document_not_found": "Document not found.",
     "no_included_docs": "There are no included documents to analyze.",

@@ -258,14 +258,26 @@ def undo_batch(db, batch, user_id: Optional[int] = None) -> dict:
     reverted = 0
     failed = []
     for t in traces:
+        # Cada reversion en su propio savepoint: si una falla (p.ej. un registro
+        # al que aun apunta otro por clave foranea), se descarta ESA sola y el
+        # resto del lote se sigue deshaciendo. Sin esto, un unico fallo de flush
+        # dejaba la sesion inservible y tumbaba todo el deshacer con un 500.
+        tid, ttable, trec = t.id, t.table_name, t.record_id
+        savepoint = db.begin_nested()
         try:
-            if revert_record(db, t, user_id):
+            ok = revert_record(db, t, user_id)
+            savepoint.commit()
+            if ok:
                 reverted += 1
         except Exception as exc:
-            failed.append({"trace_id": t.id, "table": t.table_name,
-                           "record_id": t.record_id, "error": str(exc)[:200]})
-            logger.warning("ingest: no se pudo revertir %s:%s",
-                           t.table_name, t.record_id, exc_info=True)
+            try:
+                savepoint.rollback()
+            except Exception:  # pragma: no cover - savepoint ya cerrado
+                pass
+            failed.append({"trace_id": tid, "table": ttable,
+                           "record_id": trec, "error": str(exc)[:200]})
+            logger.warning("ingest: no se pudo revertir %s:%s", ttable, trec,
+                           exc_info=True)
 
     db.query(IngestConflict).filter_by(batch_id=batch.id).delete(
         synchronize_session=False)

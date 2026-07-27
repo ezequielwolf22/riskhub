@@ -247,6 +247,7 @@
     "queued": "Pack en cola: {n} documentos. El agente los esta leyendo.",
     "record_already_reverted": "Ese registro ya se habia revertido.",
     "record_not_reverted": "Ese registro no esta deshecho, no hay nada que rehacer.",
+    "revert_failed": "No se pudo deshacer este registro porque otro depende de el. Deshaz primero lo que lo referencia, o deshaz el lote entero.",
     "record_not_found": "Registro no encontrado.",
     "document_not_found": "Documento no encontrado.",
     "no_included_docs": "No hay documentos incluidos para analizar.",

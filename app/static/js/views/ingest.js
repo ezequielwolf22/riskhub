@@ -498,10 +498,23 @@ const ViewIngest = (() => {
         </div>` : ''}
       </div>
       <p style="font-size:13px;color:var(--text-muted);margin:6px 0 12px;">${t('ingest.docs.hint')}</p>
-      ${docs.length
-        ? `<div style="display:flex;flex-direction:column;gap:8px;">${rows}</div>
-           <p style="font-size:11px;color:var(--text-subtle);margin:10px 0 0;">
-             ${t('ingest.docs.count', { n: docs.length, included })}</p>`
+      ${docs.length ? `
+        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;
+                    padding:8px 10px;background:var(--bg-2);border-radius:8px;margin-bottom:10px;">
+          <label style="display:flex;align-items:center;gap:6px;font-size:12px;
+                        font-weight:600;cursor:pointer;">
+            <input type="checkbox" id="ing-doc-all"> ${t('ingest.docs.select_all')}
+          </label>
+          <span id="ing-doc-selcount" style="font-size:12px;color:var(--text-subtle);"></span>
+          <div style="flex:1;"></div>
+          <button class="btn btn-ghost btn-xs" data-bulk="include">${t('ingest.docs.bulk_include')}</button>
+          <button class="btn btn-ghost btn-xs" data-bulk="exclude">${t('ingest.docs.bulk_exclude')}</button>
+          <button class="btn btn-ghost btn-xs" data-bulk="remove"
+            style="color:var(--risk-high);">${t('ingest.docs.bulk_remove')}</button>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:8px;">${rows}</div>
+        <p style="font-size:11px;color:var(--text-subtle);margin:10px 0 0;">
+          ${t('ingest.docs.count', { n: docs.length, included })}</p>`
         : `<p class="text-muted">${t('ingest.docs.empty')}</p>`}
     `;
     _wireDocuments();
@@ -512,30 +525,45 @@ const ViewIngest = (() => {
     const badge = _DOC_STATUS_BADGE[d.status] || 'badge-muted';
     return `<div style="display:flex;justify-content:space-between;align-items:center;
                 gap:12px;flex-wrap:wrap;border:1px solid var(--border);border-radius:10px;
-                padding:10px 12px;${off ? 'opacity:.55;' : ''}">
-      <div style="min-width:0;flex:1 1 260px;">
-        <div style="font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
-          ${UI.esc(d.filename)}</div>
-        <div style="font-size:11px;color:var(--text-subtle);margin-top:2px;
-                    display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
-          ${d.format ? `<span class="badge badge-muted">${UI.esc(d.format)}</span>` : ''}
-          <span class="badge ${badge}">${UI.esc(_label('docs', 'status_' + d.status))}</span>
-          ${d.doc_kind ? `<span class="badge badge-purple">${UI.esc(_label('doc_kind', d.doc_kind))}</span>` : ''}
-          ${d.size_bytes != null ? `<span>${_fmtBytes(d.size_bytes)}</span>` : ''}
-          ${d.error ? `<span style="color:var(--risk-high);">${UI.esc(String(d.error).slice(0,120))}</span>` : ''}
+                padding:10px 12px;${off ? 'opacity:.6;' : ''}">
+      <div style="display:flex;align-items:center;gap:10px;min-width:0;flex:1 1 260px;">
+        <input type="checkbox" class="ing-doc-sel" data-doc-sel="${d.id}"
+               style="flex-shrink:0;" title="${UI.esc(t('ingest.docs.select_all'))}">
+        <div style="min-width:0;">
+          <div style="font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+            ${UI.esc(d.filename)}</div>
+          <div style="font-size:11px;color:var(--text-subtle);margin-top:2px;
+                      display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
+            ${d.format ? `<span class="badge badge-muted">${UI.esc(d.format)}</span>` : ''}
+            <span class="badge ${badge}">${UI.esc(_label('docs', 'status_' + d.status))}</span>
+            ${d.doc_kind ? `<span class="badge badge-purple">${UI.esc(_label('doc_kind', d.doc_kind))}</span>` : ''}
+            ${d.size_bytes != null ? `<span>${_fmtBytes(d.size_bytes)}</span>` : ''}
+            ${d.error ? `<span style="color:var(--risk-high);">${UI.esc(String(d.error).slice(0,120))}</span>` : ''}
+          </div>
         </div>
       </div>
-      <div style="display:flex;gap:10px;align-items:center;flex-shrink:0;">
-        <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;"
-               title="${UI.esc(t('ingest.docs.include_toggle'))}">
-          <input type="checkbox" data-doc-inc="${i}" ${d.included ? 'checked' : ''}>
-          <span style="color:${d.included ? 'var(--risk-low)' : 'var(--text-subtle)'};">
-            ${d.included ? t('ingest.docs.included_on') : t('ingest.docs.included_off')}</span>
-        </label>
-        <button class="btn btn-ghost btn-xs" data-doc-rm="${i}"
+      <div style="display:flex;gap:6px;align-items:center;flex-shrink:0;">
+        <button class="btn btn-ghost btn-xs" data-doc-toggle="${d.id}">
+          ${d.included ? t('ingest.docs.exclude') : t('ingest.docs.include')}</button>
+        <span class="badge ${d.included ? 'badge-low' : 'badge-muted'}">
+          ${d.included ? t('ingest.docs.included_on') : t('ingest.docs.included_off')}</span>
+        <button class="btn btn-ghost btn-xs" data-doc-rm="${d.id}"
           style="color:var(--risk-high);">${t('ingest.docs.remove')}</button>
       </div>
     </div>`;
+  }
+
+  function _selectedDocIds() {
+    return Array.from(document.querySelectorAll('.ing-doc-sel'))
+      .filter(cb => cb.checked).map(cb => Number(cb.dataset.docSel));
+  }
+
+  function _refreshSelCount() {
+    const el = document.getElementById('ing-doc-selcount');
+    if (el) {
+      const n = _selectedDocIds().length;
+      el.textContent = n ? t('ingest.docs.selected_n', { n }) : '';
+    }
   }
 
   function _wireDocuments() {
@@ -549,28 +577,64 @@ const ViewIngest = (() => {
         if (res.job_id) _startPolling(res.job_id);
       } catch (e) { UI.toast(e.message, 'error'); reanalyze.disabled = false; }
     };
-    document.querySelectorAll('[data-doc-inc]').forEach(cb => {
-      cb.onchange = async () => {
-        const d = _documents[Number(cb.dataset.docInc)];
+
+    const all = document.getElementById('ing-doc-all');
+    if (all) all.onchange = () => {
+      document.querySelectorAll('.ing-doc-sel').forEach(cb => { cb.checked = all.checked; });
+      _refreshSelCount();
+    };
+    document.querySelectorAll('.ing-doc-sel').forEach(cb => {
+      cb.onchange = _refreshSelCount;
+    });
+
+    // Acciones por documento (uno a uno)
+    document.querySelectorAll('[data-doc-toggle]').forEach(btn => {
+      btn.onclick = async () => {
+        const id = Number(btn.dataset.docToggle);
+        const d = _documents.find(x => x.id === id);
         if (!d) return;
+        btn.disabled = true;
         try {
-          await Api.patch(`/api/ingest/documents/${d.id}`, { included: cb.checked });
+          await Api.patch(`/api/ingest/documents/${id}`, { included: !d.included });
           _loadDocuments();
-        } catch (e) { UI.toast(e.message, 'error'); cb.checked = !cb.checked; }
+        } catch (e) { UI.toast(e.message, 'error'); btn.disabled = false; }
       };
     });
     document.querySelectorAll('[data-doc-rm]').forEach(btn => {
       btn.onclick = async () => {
-        const d = _documents[Number(btn.dataset.docRm)];
-        if (!d || !await UI.confirm(t('ingest.docs.remove_confirm'))) return;
+        const id = Number(btn.dataset.docRm);
+        if (!await UI.confirm(t('ingest.docs.remove_confirm'))) return;
         btn.disabled = true;
         try {
-          await Api.req(`/api/ingest/documents/${d.id}`, { method: 'DELETE' });
+          await Api.req(`/api/ingest/documents/${id}`, { method: 'DELETE' });
           UI.toast(t('ingest.docs.removed_ok'), 'success');
           _loadDocuments();
         } catch (e) { UI.toast(e.message, 'error'); btn.disabled = false; }
       };
     });
+
+    // Acciones en lote (sobre los seleccionados)
+    document.querySelectorAll('[data-bulk]').forEach(btn => {
+      btn.onclick = () => _bulkDocs(btn.dataset.bulk);
+    });
+  }
+
+  async function _bulkDocs(action) {
+    const ids = _selectedDocIds();
+    if (!ids.length) { UI.toast(t('ingest.docs.none_selected'), 'error'); return; }
+    if (action === 'remove' &&
+        !await UI.confirm(t('ingest.docs.bulk_remove_confirm', { n: ids.length }))) return;
+    try {
+      for (const id of ids) {
+        if (action === 'remove') {
+          await Api.req(`/api/ingest/documents/${id}`, { method: 'DELETE' });
+        } else {
+          await Api.patch(`/api/ingest/documents/${id}`, { included: action === 'include' });
+        }
+      }
+      UI.toast(t('ingest.docs.bulk_done', { n: ids.length }), 'success');
+      _loadDocuments();
+    } catch (e) { UI.toast(e.message, 'error'); }
   }
 
   // ---------- 3. Lotes ----------
