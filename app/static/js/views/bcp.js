@@ -5177,431 +5177,206 @@ const ViewBcp = (() => {
 
   // ── Tab Grafo de dependencias ─────────────────────────────────────────────────
 
-  async function _ensureCytoscape() {
-    if (window.cytoscape) return true;
-    return new Promise(resolve => {
-      const s = document.createElement('script');
-      s.src = '/vendor/js/cytoscape.min.js';
-      s.onload = () => resolve(true);
-      s.onerror = () => resolve(false);
-      document.head.appendChild(s);
-    });
-  }
+  // ── Arbol de dependencias (Sede -> Proceso -> Dependencias, ISO/TS 22317) ────
+  // Reemplaza el grafo Cytoscape: un arbol limpio, colapsable y con zoom/pan,
+  // servido en local (sin librerias externas).
+  let _treeData = null;
+  let _treeZoom = 1;
+  let _treePan = { x: 0, y: 0 };
+  let _treeCollapsed = new Set();
+
+  const _DEP_CAT = {
+    IT_system:        { label: 'Sistemas y aplicaciones', icon: 'ti-server-2',       color: '#2563eb' },
+    supplier:         { label: 'Proveedores',             icon: 'ti-building-store', color: '#059669' },
+    personnel:        { label: 'Personas',                icon: 'ti-users',          color: '#7c3aed' },
+    facility:         { label: 'Instalaciones',           icon: 'ti-building',       color: '#b45309' },
+    communication:    { label: 'Comunicaciones',          icon: 'ti-antenna',        color: '#0891b2' },
+    utility:          { label: 'Suministros',             icon: 'ti-bolt',           color: '#ca8a04' },
+    transport:        { label: 'Transporte',              icon: 'ti-truck',          color: '#65a30d' },
+    external_service: { label: 'Servicios externos',      icon: 'ti-cloud',          color: '#0d9488' },
+    process:          { label: 'Otros procesos',          icon: 'ti-sitemap',        color: '#db2777' },
+    other:            { label: 'Otras dependencias',      icon: 'ti-circle-dot',     color: '#6b7280' },
+  };
+  const _TREE_CRIT = { critical: '#DC2626', high: '#EA580C', medium: '#D97706', low: '#16a34a' };
 
   async function _tabGraph(container) {
-    const cytOk = await _ensureCytoscape();
-    if (!cytOk) {
-      container.innerHTML = `<div class="notice notice-warning">${t('bcp.graph_load_error')}</div>`;
+    container.innerHTML =
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px">'
+      + '<div><h3 style="margin:0;font-size:16px">' + UI.esc(t('bcp.deptree_title')) + '</h3>'
+      + '<p style="margin:4px 0 0;font-size:12px;color:var(--text-subtle)">' + UI.esc(t('bcp.deptree_subtitle')) + '</p></div>'
+      + '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">'
+      + '<button class="btn btn-sm btn-ghost" id="dt-expand">' + UI.esc(t('bcp.deptree_expand')) + '</button>'
+      + '<button class="btn btn-sm btn-ghost" id="dt-collapse">' + UI.esc(t('bcp.deptree_collapse')) + '</button>'
+      + '<button class="btn btn-sm btn-ghost" id="dt-zin" title="Zoom +"><i class="ti ti-zoom-in"></i></button>'
+      + '<button class="btn btn-sm btn-ghost" id="dt-zout" title="Zoom -"><i class="ti ti-zoom-out"></i></button>'
+      + '<button class="btn btn-sm btn-ghost" id="dt-fit" title="' + UI.esc(t('bcp.deptree_reset')) + '"><i class="ti ti-arrows-maximize"></i></button>'
+      + '</div></div>'
+      + '<div id="dt-viewport" style="position:relative;width:100%;height:600px;overflow:hidden;'
+      + 'border:1px solid var(--border);border-radius:var(--radius-lg);background:var(--bg-2);cursor:grab">'
+      + '<div id="dt-stage" style="position:absolute;top:0;left:0;transform-origin:0 0;padding:20px"></div></div>';
+    _treeZoom = 1; _treePan = { x: 0, y: 0 };
+    try {
+      _treeData = await Api.get('/api/bcp/dependency-tree');
+    } catch (e) {
+      const vp = container.querySelector('#dt-viewport');
+      if (vp) vp.innerHTML = '<div class="notice notice-error" style="margin:14px">' + UI.esc(e.message || e) + '</div>';
       return;
     }
-
-    container.innerHTML = `
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px">
-        <div>
-          <h3 style="margin:0;font-size:16px">${t('bcp.graph_title')}</h3>
-          <p style="margin:4px 0 0;font-size:12px;color:var(--text-subtle)">${t('bcp.graph_subtitle')}</p>
-        </div>
-        <div style="display:flex;gap:6px;flex-wrap:wrap">
-          <select id="graph-loc-filter" class="form-control" style="font-size:12px;width:auto;min-width:140px">
-            <option value="">${t('bcp.option_all_locations')}</option>
-          </select>
-          <button class="btn btn-sm btn-ghost" id="btn-graph-zoom-in" title="Zoom +"><i class="ti ti-zoom-in"></i></button>
-          <button class="btn btn-sm btn-ghost" id="btn-graph-zoom-out" title="Zoom -"><i class="ti ti-zoom-out"></i></button>
-          <button class="btn btn-sm btn-ghost" id="btn-graph-fit" title="${t('bcp.graph_fit_title')}"><i class="ti ti-arrows-maximize"></i></button>
-          <button class="btn btn-sm btn-ghost" id="btn-graph-export" title="${t('bcp.graph_export_title')}"><i class="ti ti-download"></i></button>
-          <button class="btn btn-sm btn-secondary" id="btn-analyze-graph"><i class="ti ti-brain"></i> ${t('bcp.btn_analyze_ai')}</button>
-        </div>
-      </div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;font-size:12px">
-        <label style="display:flex;gap:5px;align-items:center;cursor:pointer;padding:4px 8px;border:1px solid var(--border);border-radius:4px">
-          <input type="checkbox" id="graph-show-assets" checked> <span>${t('bcp.chk_assets_it')}</span>
-        </label>
-        <label style="display:flex;gap:5px;align-items:center;cursor:pointer;padding:4px 8px;border:1px solid var(--border);border-radius:4px">
-          <input type="checkbox" id="graph-show-suppliers" checked> <span>${t('bcp.chk_external_suppliers')}</span>
-        </label>
-        <label style="display:flex;gap:5px;align-items:center;cursor:pointer;padding:4px 8px;border:1px solid var(--border);border-radius:4px">
-          <input type="checkbox" id="graph-show-labels" checked> <span>${t('bcp.chk_edge_labels')}</span>
-        </label>
-        <label style="display:flex;gap:5px;align-items:center;cursor:pointer;padding:4px 8px;border:1px solid var(--border);border-radius:4px">
-          <input type="checkbox" id="graph-only-critical"> <span>${t('bcp.chk_only_critical')}</span>
-        </label>
-      </div>
-      <div style="display:grid;grid-template-columns:1fr 300px;gap:14px;align-items:start">
-        <div>
-          <div id="cy-graph" style="width:100%;height:560px;border:1px solid var(--border);border-radius:var(--radius-lg);position:relative;overflow:hidden;background-color:#0b0b14;background-image:radial-gradient(circle at 15% 12%, rgba(124,58,237,0.14), transparent 45%),radial-gradient(circle at 85% 88%, rgba(5,150,105,0.12), transparent 45%),radial-gradient(circle at 50% 50%, rgba(255,255,255,0.05) 1px, transparent 1.4px);background-size:auto,auto,22px 22px;"></div>
-          <div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:8px;font-size:11px;color:var(--text-subtle)">
-            <div style="display:flex;align-items:center;gap:5px"><span style="width:12px;height:12px;border-radius:50%;background:#7c3aed;display:inline-block"></span>${t('bcp.legend_process')}</div>
-            <div style="display:flex;align-items:center;gap:5px"><span style="width:12px;height:12px;border-radius:3px;background:#D65200;display:inline-block"></span>${t('bcp.legend_asset_it')}</div>
-            <div style="display:flex;align-items:center;gap:5px"><span style="width:12px;height:12px;clip-path:polygon(50% 0%,100% 25%,100% 75%,50% 100%,0% 75%,0% 25%);background:#059669;display:inline-block"></span>${t('bcp.legend_external_supplier')}</div>
-            <div style="display:flex;align-items:center;gap:5px"><span style="width:12px;height:12px;border-radius:50%;border:2px solid #ef4444;display:inline-block"></span>SPOF</div>
-            <div style="display:flex;align-items:center;gap:5px"><span style="display:inline-block;width:24px;height:2px;background:#ef4444"></span>${t('bcp.legend_critical_dep')}</div>
-            <div style="display:flex;align-items:center;gap:5px"><span style="display:inline-block;width:24px;height:1px;background:#6b7280;border-top:1px dashed #6b7280"></span>${t('bcp.legend_external_dep')}</div>
-          </div>
-        </div>
-        <div style="display:flex;flex-direction:column;gap:10px;">
-          <div class="card" style="padding:12px;">
-            <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-subtle);margin-bottom:8px">${t('bcp.label_statistics')}</div>
-            <div id="graph-stats" style="font-size:12px;color:var(--text-subtle)">${t('common.loading')}</div>
-          </div>
-          <div id="graph-node-detail" style="display:none"></div>
-          <div id="graph-analysis" style="display:none"></div>
-        </div>
-      </div>
-    `;
-
-    // Poblar select de localizaciones
-    Object.values(_locationMap).filter(l => !l.parent_id).forEach(loc => {
-      const opt = document.createElement('option');
-      opt.value = loc.id; opt.textContent = loc.name;
-      if (loc.id === _locationFilter) opt.selected = true;
-      container.querySelector('#graph-loc-filter').appendChild(opt);
-    });
-
-    let _cyInstance = null;
-
-    async function loadGraph(locationId) {
-      const url = locationId ? `/api/bcp/graph?location_id=${locationId}` : '/api/bcp/graph';
-      const data = await Api.get(url).catch(() => ({ nodes: [], edges: [], stats: {} }));
-
-      const showAssets    = container.querySelector('#graph-show-assets')?.checked !== false;
-      const showSuppliers = container.querySelector('#graph-show-suppliers')?.checked !== false;
-      const onlyCritical  = container.querySelector('#graph-only-critical')?.checked === true;
-
-      const filteredNodes = (data.nodes || []).filter(n => {
-        if (n.type === 'asset'    && !showAssets)    return false;
-        if (n.type === 'supplier' && !showSuppliers) return false;
-        if (onlyCritical && !['critical', 'high'].includes(n.criticality) && !n.is_spof) return false;
-        return true;
-      });
-      const nodeIds = new Set(filteredNodes.map(n => String(n.id)));
-      const filteredEdges = (data.edges || []).filter(e =>
-        nodeIds.has(String(e.source)) && nodeIds.has(String(e.target))
-      );
-
-      const elements = [
-        ...filteredNodes.map(n => ({ data: {
-          id: String(n.id), label: n.label || n.name || String(n.id),
-          type: n.type, criticality: n.criticality,
-          is_spof: n.is_spof ? true : undefined,
-          rto: n.rto_hours, location_name: n.location_name,
-          _raw: n,
-        }})),
-        ...filteredEdges.map(e => ({ data: {
-          id: 'e-' + e.id, source: String(e.source), target: String(e.target),
-          type: e.type, label: e.label || '',
-          is_critical: e.is_critical ? true : undefined,
-        }})),
-      ];
-
-      const cyContainer = container.querySelector('#cy-graph');
-      if (!cyContainer) return;
-      cyContainer.innerHTML = '';
-
-      if (_cyInstance) { try { _cyInstance.destroy(); } catch (_) {} }
-
-      const showLabels = container.querySelector('#graph-show-labels')?.checked !== false;
-      _cyInstance = cytoscape({
-        container: cyContainer,
-        elements,
-        style: [
-          { selector: 'node', style: {
-            'label': 'data(label)',
-            'font-family': 'Inter, -apple-system, sans-serif',
-            'font-size': '10px', 'font-weight': 600, 'color': '#f1f5f9',
-            'text-valign': 'bottom', 'text-halign': 'center',
-            'text-margin-y': '8px',
-            'text-background-color': '#0b0b14', 'text-background-opacity': 0.75,
-            'text-background-shape': 'roundrectangle', 'text-background-padding': '3px',
-            'text-max-width': '90px', 'text-wrap': 'ellipsis',
-            'width': '40px', 'height': '40px',
-            'border-width': '0px',
-            'overlay-opacity': 0,
-            'transition-property': 'border-color border-width background-color opacity',
-            'transition-duration': '0.18s',
-          }},
-          // Proceso — esfera purpura con degradado (efecto glossy 3D)
-          { selector: 'node[type="process"]', style: {
-            'shape': 'ellipse',
-            'background-fill': 'radial-gradient',
-            'background-gradient-stop-colors': '#c4b5fd #7c3aed #4c1d95',
-            'background-gradient-stop-positions': '0 55 100',
-            'width': '46px', 'height': '46px',
-            'border-width': '2px', 'border-color': '#a78bfa', 'border-opacity': 0.9,
-          }},
-          { selector: 'node[type="process"][criticality="critical"]', style: {
-            'background-gradient-stop-colors': '#ddd6fe #6d28d9 #3b0764',
-            'width': '58px', 'height': '58px',
-            'border-width': '3px', 'border-color': '#c4b5fd',
-            'font-size': '11px',
-          }},
-          { selector: 'node[type="process"][criticality="high"]', style: {
-            'width': '52px', 'height': '52px',
-          }},
-          // Activo IT — rectangulo naranja con degradado
-          { selector: 'node[type="asset"]', style: {
-            'shape': 'roundrectangle',
-            'background-fill': 'linear-gradient',
-            'background-gradient-stop-colors': '#fdba74 #c2410c #7c2d12',
-            'background-gradient-stop-positions': '0 55 100',
-            'background-gradient-direction': 'to-bottom-right',
-            'width': '42px', 'height': '34px',
-            'border-width': '2px', 'border-color': '#fb923c', 'border-opacity': 0.9,
-          }},
-          { selector: 'node[type="asset"][criticality="critical"]', style: {
-            'background-gradient-stop-colors': '#fed7aa #9a3412 #431407',
-            'width': '52px', 'height': '42px',
-          }},
-          // Proveedor externo — hexagono verde con degradado
-          { selector: 'node[type="supplier"]', style: {
-            'shape': 'hexagon',
-            'background-fill': 'radial-gradient',
-            'background-gradient-stop-colors': '#6ee7b7 #059669 #022c22',
-            'background-gradient-stop-positions': '0 55 100',
-            'width': '46px', 'height': '46px',
-            'border-width': '2px', 'border-color': '#34d399', 'border-opacity': 0.9,
-          }},
-          { selector: 'node[type="supplier"][criticality="critical"]', style: {
-            'background-gradient-stop-colors': '#a7f3d0 #064e3b #022c22',
-            'width': '56px', 'height': '56px',
-          }},
-          { selector: 'node[type="supplier"][criticality="high"]', style: {
-            'width': '50px', 'height': '50px',
-          }},
-          // SPOF — halo rojo pulsante (glow)
-          { selector: 'node[?is_spof]', style: {
-            'border-width': '3px', 'border-color': '#ef4444',
-            'border-style': 'double',
-            'underlay-color': '#ef4444', 'underlay-opacity': 0.35,
-            'underlay-padding': '7px', 'underlay-shape': 'ellipse',
-          }},
-          // Criticidad crítica — halo ambar sutil
-          { selector: 'node[criticality="critical"]', style: {
-            'underlay-color': '#fbbf24', 'underlay-opacity': 0.18, 'underlay-padding': '5px',
-          }},
-          // Nodo seleccionado
-          { selector: 'node:selected', style: {
-            'border-width': '3px', 'border-color': '#fbbf24', 'border-style': 'solid',
-            'underlay-color': '#fbbf24', 'underlay-opacity': 0.3, 'underlay-padding': '8px',
-          }},
-          // Dim — atenuado al hacer hover sobre otro nodo
-          { selector: 'node.bcm-dim, edge.bcm-dim', style: { 'opacity': 0.15 } },
-          { selector: 'node.bcm-focus', style: { 'z-index': 999 } },
-          { selector: 'edge.bcm-focus', style: { 'opacity': 1, 'z-index': 998 } },
-          // Aristas base — curva suave con sombra de profundidad
-          { selector: 'edge', style: {
-            'width': '1.6px', 'line-color': '#64748b',
-            'target-arrow-shape': 'triangle', 'target-arrow-color': '#64748b',
-            'arrow-scale': 1.1,
-            'curve-style': 'unbundled-bezier', 'control-point-distances': 18, 'control-point-weights': 0.5,
-            'font-size': '9px', 'font-family': 'Inter, sans-serif', 'color': '#cbd5e1',
-            'label': showLabels ? 'data(label)' : '',
-            'text-rotation': 'autorotate',
-            'text-background-color': '#0b0b14', 'text-background-opacity': 0.75,
-            'text-background-shape': 'roundrectangle', 'text-background-padding': '2px',
-            'opacity': 0.85,
-            'transition-property': 'line-color width opacity',
-            'transition-duration': '0.18s',
-          }},
-          // Dependencia crítica — rojo con mas grosor
-          { selector: 'edge[?is_critical]', style: {
-            'line-color': '#ef4444', 'target-arrow-color': '#ef4444',
-            'width': '2.6px', 'opacity': 0.95,
-          }},
-          // Proveedor externo — discontinua azul
-          { selector: 'edge[?is_external]', style: {
-            'line-style': 'dashed', 'line-dash-pattern': [6, 4],
-            'line-color': '#3b82f6', 'target-arrow-color': '#3b82f6',
-            'width': '1.6px',
-          }},
-          // Dependencia crítica externa (supplier crítico)
-          { selector: 'edge[?is_critical][?is_external]', style: {
-            'line-color': '#f97316', 'target-arrow-color': '#f97316',
-            'width': '2.6px',
-          }},
-        ],
-        layout: {
-          name: 'cose',
-          animate: true, animationDuration: 700,
-          nodeDimensionsIncludeLabels: true,
-          nodeRepulsion: 9000, edgeElasticity: 110, gravity: 0.25,
-          numIter: 1200, coolingFactor: 0.98, idealEdgeLength: 90,
-        },
-        wheelSensitivity: 0.3,
-      });
-
-      // Tooltip flotante al pasar el cursor sobre un nodo
-      let tooltipEl = cyContainer.parentElement.querySelector('.bcm-graph-tooltip');
-      if (!tooltipEl) {
-        tooltipEl = document.createElement('div');
-        tooltipEl.className = 'bcm-graph-tooltip';
-        tooltipEl.style.cssText = 'position:absolute;display:none;pointer-events:none;z-index:50;'
-          + 'background:rgba(15,15,26,0.96);border:1px solid rgba(167,139,250,0.4);border-radius:8px;'
-          + 'padding:8px 10px;font-size:11px;color:#e2e8f0;max-width:220px;box-shadow:0 6px 20px rgba(0,0,0,0.45);'
-          + 'backdrop-filter:blur(4px);line-height:1.5;';
-        cyContainer.appendChild(tooltipEl);
-      }
-      const typeLabelsTip = { process: t('bcp.type_business_process'), asset: t('bcp.legend_asset_it'), supplier: t('bcp.legend_external_supplier') };
-      const typeColorsTip = { process: '#a78bfa', asset: '#fb923c', supplier: '#34d399' };
-
-      _cyInstance.on('mouseover', 'node', evt => {
-        const node = evt.target;
-        const raw = node.data('_raw') || {};
-        const neighborhood = node.closedNeighborhood();
-        _cyInstance.elements().not(neighborhood).addClass('bcm-dim');
-        neighborhood.addClass('bcm-focus');
-
-        const critColor = CRIT_COLORS[raw.criticality] || '#94a3b8';
-        tooltipEl.innerHTML = `
-          <div style="font-weight:700;font-size:12px;color:${typeColorsTip[raw.type] || '#fff'};margin-bottom:3px">${UI.esc(raw.label || raw.name || '')}</div>
-          <div style="color:#94a3b8;font-size:10px;text-transform:uppercase;letter-spacing:.03em;margin-bottom:5px">${typeLabelsTip[raw.type] || raw.type}</div>
-          <div>${t('bcp.label_criticality_colon')} <strong style="color:${critColor}">${UI.esc(raw.criticality || '—')}</strong></div>
-          ${raw.rto_hours != null ? `<div>RTO: <strong>${raw.rto_hours}h</strong></div>` : ''}
-          ${raw.rpo_hours != null ? `<div>RPO: <strong>${raw.rpo_hours}h</strong></div>` : ''}
-          ${raw.location_name ? `<div>${t('bcp.label_site_colon')} <strong>${UI.esc(raw.location_name)}</strong></div>` : ''}
-          ${raw.is_spof ? `<div style="color:#f87171;font-weight:700;margin-top:3px"><i class="ti ti-alert-triangle"></i> ${t('bcp.spof_warning')}</div>` : ''}
-          <div style="color:#64748b;font-size:10px;margin-top:5px">${t('bcp.tooltip_click_detail')}</div>
-        `;
-        tooltipEl.style.display = 'block';
-      });
-      _cyInstance.on('mousemove', evt => {
-        if (tooltipEl.style.display !== 'block') return;
-        const pos = evt.renderedPosition || (evt.target.renderedPosition ? evt.target.renderedPosition() : null);
-        if (!pos) return;
-        let left = pos.x + 16, top = pos.y + 12;
-        if (left + 230 > cyContainer.clientWidth) left = pos.x - 236;
-        if (top + 140 > cyContainer.clientHeight) top = pos.y - 140;
-        tooltipEl.style.left = left + 'px';
-        tooltipEl.style.top = top + 'px';
-      });
-      _cyInstance.on('mouseout', 'node', () => {
-        _cyInstance.elements().removeClass('bcm-dim bcm-focus');
-        tooltipEl.style.display = 'none';
-      });
-      _cyInstance.on('mouseover', 'edge', evt => {
-        const edge = evt.target;
-        _cyInstance.elements().not(edge.connectedNodes().union(edge)).addClass('bcm-dim');
-        edge.addClass('bcm-focus');
-      });
-      _cyInstance.on('mouseout', 'edge', () => {
-        _cyInstance.elements().removeClass('bcm-dim bcm-focus');
-      });
-
-      // Clic en nodo → panel de detalle enriquecido
-      _cyInstance.on('tap', 'node', evt => {
-        const raw = evt.target.data('_raw') || {};
-        const detail = container.querySelector('#graph-node-detail');
-        if (!detail) return;
-        detail.style.display = 'block';
-        const typeLabels  = { process: t('bcp.type_business_process'), asset: t('bcp.legend_asset_it'), supplier: t('bcp.legend_external_supplier') };
-        const typeColors  = { process: '#7c3aed', asset: '#c2410c', supplier: '#059669' };
-        const critColor   = CRIT_COLORS[raw.criticality] || '#6b7280';
-        const plans       = raw.plans || [];
-
-        let extraHtml = '';
-        if (raw.type === 'process') {
-          extraHtml = `
-            ${raw.rto_hours   != null ? `<div>RTO: <strong>${raw.rto_hours}h</strong></div>` : ''}
-            ${raw.rpo_hours   != null ? `<div>RPO: <strong>${raw.rpo_hours}h</strong></div>` : ''}
-            ${raw.mtpd_hours  != null ? `<div>MTPD: <strong>${raw.mtpd_hours}h</strong></div>` : ''}
-            ${raw.cost_per_hour != null ? `<div>${t('bcp.label_cost_per_hour_colon')} <strong>${parseFloat(raw.cost_per_hour).toLocaleString('es-ES')} €</strong></div>` : ''}
-            ${raw.location_name ? `<div>${t('bcp.label_site_colon')} <strong>${UI.esc(raw.location_name)}</strong></div>` : ''}
-            ${plans.length ? `<div style="margin-top:6px;padding-top:6px;border-top:1px solid var(--border)">
-              <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--text-subtle);margin-bottom:3px">${t('bcp.label_associated_plans')}</div>
-              ${plans.map(pl => `<span class="badge badge-secondary" style="font-size:10px;margin:1px 2px">${UI.esc(pl.code||pl.type)}</span>`).join('')}
-            </div>` : ''}
-          `;
-        } else if (raw.type === 'supplier') {
-          extraHtml = `
-            ${raw.contract_sla_hours != null ? `<div>${t('bcp.label_contract_sla_colon')} <strong>${raw.contract_sla_hours}h</strong></div>` : ''}
-            ${raw.rto_impact_hours  != null ? `<div>${t('bcp.label_rto_impact_colon')} <strong>${raw.rto_impact_hours}h</strong></div>` : ''}
-            <div>${t('bcp.label_contingency_plan_colon')} <strong>${raw.has_contingency ? t('common.yes') : t('common.no')}</strong></div>
-          `;
-        }
-
-        detail.innerHTML = `<div class="card" style="padding:12px;border-left:3px solid ${typeColors[raw.type]||'var(--primary)'}">
-          <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:${typeColors[raw.type]||'var(--text-subtle)'};margin-bottom:6px">
-            ${typeLabels[raw.type] || raw.type}
-          </div>
-          <div style="font-size:14px;font-weight:700;margin-bottom:8px;line-height:1.3">${UI.esc(raw.label || raw.name || '')}</div>
-          <div style="font-size:12px;display:grid;gap:4px;color:var(--text-subtle)">
-            <div>${t('bcp.label_criticality_colon')} <strong style="color:${critColor}">${UI.esc(raw.criticality || '—')}</strong></div>
-            ${extraHtml}
-            ${raw.is_spof ? `<div style="margin-top:6px;padding:5px 8px;background:#fee2e2;border-radius:4px;color:#b91c1c;font-weight:700;font-size:11px">
-              ${t('bcp.spof_full_warning')}
-            </div>` : ''}
-          </div>
-          <div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:8px">
-            ${raw.type === 'process' ? `<button class="btn btn-ghost btn-sm" style="font-size:11px"
-              onclick="ViewBcp._switchTab('processes')"><i class="ti ti-external-link"></i> ${t('bcp.btn_view_process')}</button>` : ''}
-            ${raw.type === 'supplier' ? `<button class="btn btn-ghost btn-sm" style="font-size:11px"
-              onclick="ViewBcp._setSubTab(3,'suppliers')"><i class="ti ti-external-link"></i> ${t('bcp.btn_view_supplier')}</button>` : ''}
-          </div>
-        </div>`;
-      });
-
-      // Clic en fondo → deseleccionar
-      _cyInstance.on('tap', evt => {
-        if (evt.target === _cyInstance) {
-          const detail = container.querySelector('#graph-node-detail');
-          if (detail) detail.style.display = 'none';
-        }
-      });
-
-      // Estadísticas
-      const stats = data.stats || {};
-      const statsEl = container.querySelector('#graph-stats');
-      if (statsEl) statsEl.innerHTML = `
-        <div>${t('bcp.graph_stats_nodes_edges', { nodes: filteredNodes.length, edges: filteredEdges.length })}</div>
-        <div style="color:${(stats.spof_count || 0) > 0 ? 'var(--risk-critical)' : 'inherit'}">
-          ${stats.spof_count || 0} SPOF${(stats.spof_count || 0) !== 1 ? 's' : ''}
-        </div>`;
-    }
-
-    await loadGraph(_locationFilter);
-
-    const getLocId = () => {
-      const v = container.querySelector('#graph-loc-filter').value;
-      return v ? parseInt(v) : (_locationFilter || null);
-    };
-
-    container.querySelector('#graph-loc-filter').onchange = async e => {
-      await loadGraph(e.target.value ? parseInt(e.target.value) : null);
-    };
-    container.querySelector('#graph-show-assets').onchange    = () => loadGraph(getLocId());
-    container.querySelector('#graph-show-suppliers').onchange = () => loadGraph(getLocId());
-    container.querySelector('#graph-only-critical').onchange  = () => loadGraph(getLocId());
-    container.querySelector('#graph-show-labels').onchange    = () => loadGraph(getLocId());
-
-    container.querySelector('#btn-graph-zoom-in').onclick  = () => _cyInstance?.zoom({ level: (_cyInstance.zoom() || 1) * 1.25, renderedPosition: { x: _cyInstance.width()/2, y: _cyInstance.height()/2 } });
-    container.querySelector('#btn-graph-zoom-out').onclick = () => _cyInstance?.zoom({ level: (_cyInstance.zoom() || 1) * 0.8,  renderedPosition: { x: _cyInstance.width()/2, y: _cyInstance.height()/2 } });
-    container.querySelector('#btn-graph-fit').onclick      = () => _cyInstance?.fit(undefined, 30);
-    container.querySelector('#btn-graph-export').onclick   = () => {
-      if (!_cyInstance) return;
-      const png = _cyInstance.png({ full: true, scale: 2, bg: '#0f0f1a' });
-      const a = document.createElement('a');
-      a.href = png; a.download = 'mapa-dependencias-bcm.png'; a.click();
-    };
-
-    container.querySelector('#btn-analyze-graph').onclick = async () => {
-      const btn = container.querySelector('#btn-analyze-graph');
-      btn.disabled = true;
-      btn.innerHTML = '<i class="ti ti-loader-2 ti-spin"></i> ' + t('bcp.btn_analyzing');
-      const locId = container.querySelector('#graph-loc-filter').value;
-      try {
-        const url = locId ? `/api/bcp/graph/analyze?location_id=${locId}` : '/api/bcp/graph/analyze';
-        const res = await Api.post(url, {});
-        const div = container.querySelector('#graph-analysis');
-        div.style.display = 'block';
-        div.innerHTML = `<div class="card" style="padding:12px;margin-top:8px">
-          <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-subtle);margin-bottom:6px"><i class="ti ti-brain"></i> ${t('bcp.label_ai_analysis_short')}</div>
-          <div style="font-size:12px;line-height:1.6;white-space:pre-wrap">${UI.esc(res.analysis || '')}</div>
-        </div>`;
-      } catch (e) { UI.toast(t('bcp.error_ai_analysis_prefix') + (e.message || e), 'error'); }
-      finally { btn.disabled = false; btn.innerHTML = '<i class="ti ti-brain"></i> ' + t('bcp.btn_analyze_ai'); }
-    };
+    _renderTree();
+    _wireTree(container);
   }
 
-  // ── Tab Evidencias ────────────────────────────────────────────────────────────
+  function _treeToggle(key) {
+    if (_treeCollapsed.has(key)) _treeCollapsed.delete(key); else _treeCollapsed.add(key);
+    _renderTree();
+  }
+
+  function _renderTree() {
+    const stage = document.getElementById('dt-stage');
+    if (!stage || !_treeData) return;
+    try {
+      const locs = _treeData.locations || [];
+      const unassigned = _treeData.unassigned || [];
+      const tot = _treeData.totals || {};
+      if (!locs.length && !unassigned.length) {
+        stage.innerHTML = '<p class="text-muted">' + UI.esc(t('bcp.deptree_empty')) + '</p>';
+        _applyTreeTransform(); return;
+      }
+      let html = '<div style="font-size:11px;color:var(--text-subtle);margin-bottom:12px">'
+        + UI.esc(t('bcp.deptree_totals', { l: tot.locations || 0, p: tot.processes || 0, d: tot.dependencies || 0 })) + '</div>';
+      html += locs.map(l => _treeLocation(l)).join('');
+      if (unassigned.length) {
+        html += _treeLocation({ id: 0, name: t('bcp.deptree_no_location'), processes: unassigned });
+      }
+      stage.innerHTML = html;
+      _applyTreeTransform();
+      _wireTreeNodes();
+    } catch (e) {
+      stage.innerHTML = '<div class="notice notice-error">' + UI.esc(String(e && e.message || e)) + '</div>';
+    }
+  }
+
+  function _treeLocation(loc) {
+    const key = 'loc-' + loc.id;
+    const collapsed = _treeCollapsed.has(key);
+    const procs = loc.processes || [];
+    const sub = (loc.city || loc.country)
+      ? ' <span style="font-weight:400;color:rgba(255,255,255,.75);font-size:12px">'
+        + UI.esc([loc.city, loc.country].filter(Boolean).join(', ')) + '</span>' : '';
+    return '<div style="margin-bottom:14px">'
+      + '<div class="dt-node" data-tkey="' + key + '" style="display:inline-flex;align-items:center;gap:8px;'
+      + 'background:var(--brand-purple);color:#fff;padding:8px 14px;border-radius:8px;cursor:pointer;font-weight:700">'
+      + '<span style="font-size:12px">' + (collapsed ? '▸' : '▾') + '</span>'
+      + '<i class="ti ti-map-pin"></i> ' + UI.esc(loc.name) + sub
+      + '<span class="badge" style="background:rgba(255,255,255,.25);color:#fff">' + procs.length + '</span></div>'
+      + (collapsed ? '' :
+        '<div style="margin-left:22px;border-left:2px solid var(--border);padding-left:16px;margin-top:8px">'
+        + (procs.length ? procs.map(p => _treeProcess(p)).join('')
+          : '<div style="font-size:12px;color:var(--text-subtle);padding:6px 0">' + UI.esc(t('bcp.deptree_no_process')) + '</div>')
+        + '</div>')
+      + '</div>';
+  }
+
+  function _treeProcess(p) {
+    const key = 'proc-' + p.id;
+    const collapsed = _treeCollapsed.has(key);
+    const cats = p.dependencies || {};
+    const catKeys = Object.keys(cats);
+    const critCol = _TREE_CRIT[p.criticality] || '#6b7280';
+    const bia = p.bia_pct || 0;
+    const biaCol = bia >= 80 ? '#16a34a' : bia >= 50 ? '#D97706' : '#DC2626';
+    return '<div style="margin:8px 0">'
+      + '<div class="dt-node" data-tkey="' + key + '" style="display:inline-flex;align-items:center;gap:8px;'
+      + 'background:var(--bg-1,#fff);border:1px solid var(--border);border-left:4px solid ' + critCol + ';'
+      + 'padding:7px 12px;border-radius:7px;cursor:pointer">'
+      + '<span style="font-size:11px;color:var(--text-subtle)">' + (p.dep_count ? (collapsed ? '▸' : '▾') : '·') + '</span>'
+      + '<b>' + UI.esc(p.name) + '</b>'
+      + (p.criticality ? '<span class="badge" style="background:' + critCol + ';color:#fff">' + UI.esc(_critLabel(p.criticality)) + '</span>' : '')
+      + (p.rto_hours != null ? '<span style="font-size:11px;color:var(--text-subtle)">RTO ' + p.rto_hours + 'h</span>' : '')
+      + '<span style="font-size:11px;color:' + biaCol + ';font-weight:700">BIA ' + bia + '%</span>'
+      + '<span class="badge badge-muted">' + (p.dep_count || 0) + ' dep.</span></div>'
+      + (collapsed || !catKeys.length ? '' :
+        '<div style="margin-left:20px;padding-left:14px;border-left:1px dashed var(--border);margin-top:6px">'
+        + catKeys.map(ck => _treeCategory(p.id, ck, cats[ck])).join('') + '</div>')
+      + '</div>';
+  }
+
+  function _treeCategory(pid, type, deps) {
+    const key = 'cat-' + pid + '-' + type;
+    const collapsed = _treeCollapsed.has(key);
+    const cat = _DEP_CAT[type] || _DEP_CAT.other;
+    return '<div style="margin:5px 0">'
+      + '<div class="dt-node" data-tkey="' + key + '" style="display:inline-flex;align-items:center;gap:6px;'
+      + 'cursor:pointer;font-size:13px;color:' + cat.color + ';font-weight:600">'
+      + '<span style="font-size:10px">' + (collapsed ? '▸' : '▾') + '</span>'
+      + '<i class="ti ' + cat.icon + '"></i> ' + UI.esc(cat.label)
+      + '<span class="badge badge-muted" style="font-weight:400">' + deps.length + '</span></div>'
+      + (collapsed ? '' :
+        '<div style="margin-left:18px;display:flex;flex-wrap:wrap;gap:6px;margin-top:5px">'
+        + deps.map(d =>
+          '<span style="display:inline-flex;align-items:center;gap:5px;background:var(--bg-1,#fff);'
+          + 'border:1px solid var(--border);border-radius:14px;padding:3px 10px;font-size:12px">'
+          + (d.is_critical ? '<span style="width:7px;height:7px;border-radius:50%;background:#DC2626;display:inline-block" title="critica"></span>' : '')
+          + UI.esc(d.name)
+          + (d.depends_on_process ? ' <span style="color:var(--text-subtle)">→ ' + UI.esc(d.depends_on_process) + '</span>' : '')
+          + '</span>').join('')
+        + '</div>')
+      + '</div>';
+  }
+
+  function _critLabel(c) {
+    try { return (CRIT_LABEL && CRIT_LABEL[c]) || c; } catch (e) { return c; }
+  }
+
+  function _applyTreeTransform() {
+    const stage = document.getElementById('dt-stage');
+    if (stage) stage.style.transform = 'translate(' + _treePan.x + 'px,' + _treePan.y + 'px) scale(' + _treeZoom + ')';
+  }
+
+  function _wireTreeNodes() {
+    document.querySelectorAll('.dt-node').forEach(n => {
+      n.onclick = (e) => { e.stopPropagation(); _treeToggle(n.dataset.tkey); };
+    });
+  }
+
+  function _wireTree(container) {
+    const vp = container.querySelector('#dt-viewport');
+    const zin = document.getElementById('dt-zin');
+    const zout = document.getElementById('dt-zout');
+    const fit = document.getElementById('dt-fit');
+    const exp = document.getElementById('dt-expand');
+    const col = document.getElementById('dt-collapse');
+    if (zin) zin.onclick = () => { _treeZoom = Math.min(2.5, _treeZoom * 1.2); _applyTreeTransform(); };
+    if (zout) zout.onclick = () => { _treeZoom = Math.max(0.3, _treeZoom / 1.2); _applyTreeTransform(); };
+    if (fit) fit.onclick = () => { _treeZoom = 1; _treePan = { x: 0, y: 0 }; _applyTreeTransform(); };
+    if (exp) exp.onclick = () => { _treeCollapsed = new Set(); _renderTree(); };
+    if (col) col.onclick = () => {
+      _treeCollapsed = new Set();
+      (_treeData.locations || []).forEach(l => (l.processes || []).forEach(p => _treeCollapsed.add('proc-' + p.id)));
+      _renderTree();
+    };
+    if (!vp) return;
+    vp.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      const f = e.deltaY < 0 ? 1.1 : 1 / 1.1;
+      _treeZoom = Math.max(0.3, Math.min(2.5, _treeZoom * f));
+      _applyTreeTransform();
+    }, { passive: false });
+    let dragging = false, sx = 0, sy = 0, ox = 0, oy = 0;
+    vp.addEventListener('mousedown', (e) => {
+      if (e.target.closest('.dt-node')) return;
+      dragging = true; sx = e.clientX; sy = e.clientY; ox = _treePan.x; oy = _treePan.y;
+      vp.style.cursor = 'grabbing';
+    });
+    vp.addEventListener('mousemove', (e) => {
+      if (!dragging) return;
+      _treePan = { x: ox + (e.clientX - sx), y: oy + (e.clientY - sy) };
+      _applyTreeTransform();
+    });
+    const stop = () => { dragging = false; vp.style.cursor = 'grab'; };
+    vp.addEventListener('mouseup', stop);
+    vp.addEventListener('mouseleave', stop);
+  }
 
   async function _tabEvidence(container) {
     // Carga datos en paralelo
