@@ -589,12 +589,18 @@ def _sanitize_map(parsed: dict, document: dict) -> dict:
     valid = set(contracts.entity_keys())
     units = []
     for unit in (parsed.get("units") or []):
+        # El modelo, aunque el schema pida objetos, a veces cuela una unit o una
+        # fila como texto suelto. No debe tumbar la lectura del documento entero:
+        # se descarta lo malformado y se sigue.
+        if not isinstance(unit, dict):
+            logger.info("ingest: unidad descartada, no es un objeto: %r", str(unit)[:80])
+            continue
         entity = unit.get("target_entity")
         if entity not in valid:
             logger.info("ingest: unidad descartada, entidad desconocida %r", entity)
             continue
-        rows = [r for r in (unit.get("rows") or []) if isinstance(r.get("fields"), dict)
-                and r["fields"]]
+        rows = [r for r in (unit.get("rows") or [])
+                if isinstance(r, dict) and isinstance(r.get("fields"), dict) and r["fields"]]
         if not rows:
             continue
         unit["rows"] = rows

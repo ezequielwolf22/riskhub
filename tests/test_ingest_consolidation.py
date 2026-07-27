@@ -11,7 +11,7 @@ from sqlalchemy.orm import sessionmaker
 
 from app.database import Base
 from app.models import (BCMLocation, BCMScenario, BCMScenarioAssessment,
-                        BCPStrategy)
+                        BCPStrategy, IngestBatch, IngestRecordTrace)
 from app.services.ingest import consolidation
 
 _ENGINE = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False})
@@ -24,7 +24,8 @@ ORG = 667000
 def db():
     s = _Session()
     yield s
-    for m in (BCMScenarioAssessment, BCPStrategy, BCMScenario, BCMLocation):
+    for m in (IngestRecordTrace, IngestBatch, BCMScenarioAssessment, BCPStrategy,
+              BCMScenario, BCMLocation):
         s.query(m).filter_by(organization_id=ORG).delete(synchronize_session=False)
     s.commit()
     s.close()
@@ -77,6 +78,40 @@ def test_funde_variantes_y_reapunta_valoraciones(db):
     asmts = db.query(BCMScenarioAssessment).filter_by(organization_id=ORG).all()
     assert len(asmts) == 1
     assert asmts[0].scenario_id == canon.id
+
+
+def test_limpia_el_ruido_de_revision_de_las_variantes(db):
+    bat = IngestBatch(organization_id=ORG, module="bcm", status="running")
+    db.add(bat); db.flush()
+    canon = _scn(db, "Caida de la infraestructura")
+    variants = [_scn(db, f"variante {i}") for i in range(5)]
+    canon_id = canon.id
+    variant_ids = [v.id for v in variants]
+    # trazas con needs_review; el superviviente ademas marcado posible duplicado
+    for s in [canon, *variants]:
+        db.add(IngestRecordTrace(
+            organization_id=ORG, batch_id=bat.id, entity="bcm_scenario",
+            table_name="bcm_scenarios", record_id=s.id, action="created",
+            needs_review=True,
+            after={"name": s.name, "_possible_duplicate": [{"id": 1, "name": "x"}]}))
+    db.commit()
+
+    groups = [{"canonical_name": "Caida de la infraestructura",
+               "family": "systems_comms",
+               "member_ids": [canon_id, *variant_ids]}]
+    with patch.object(consolidation, "_group_with_llm", return_value=groups):
+        consolidation.consolidate_scenarios(db, ORG)
+
+    # Trazas de las variantes fundidas: borradas (apuntaban a algo inexistente)
+    left = db.query(IngestRecordTrace).filter(
+        IngestRecordTrace.organization_id == ORG,
+        IngestRecordTrace.record_id.in_(variant_ids)).count()
+    assert left == 0
+    # El superviviente ya no es "por revisar" ni "posible duplicado"
+    tr = db.query(IngestRecordTrace).filter_by(
+        organization_id=ORG, record_id=canon_id).one()
+    assert tr.needs_review is False
+    assert "_possible_duplicate" not in (tr.after or {})
 
 
 def test_no_toca_un_catalogo_ya_pequeno(db):

@@ -102,13 +102,13 @@ def consolidate_scenarios(db, org_id: Optional[int], *, lang: str = "es",
             continue
         survivor = _pick_survivor([by_id[i] for i in ids], group.get("canonical_name"))
         _rename(survivor, group)
-        for vid in ids:
-            if vid == survivor.id:
-                continue
+        victims = [i for i in ids if i != survivor.id]
+        for vid in victims:
             _repoint(db, org_id, vid, survivor.id)
             db.query(BCMScenario).filter_by(id=vid, organization_id=org_id).delete(
                 synchronize_session=False)
             merged += 1
+        _clean_review(db, org_id, survivor.id, victims)
     db.commit()
     after = db.query(BCMScenario).filter_by(organization_id=org_id).count()
     logger.info("ingest: escenarios consolidados %d -> %d (%d fundidos)",
@@ -169,6 +169,37 @@ def _repoint(db, org_id, victim_id: int, survivor_id: int) -> None:
         else:
             s.scenario_id = survivor_id
             taken_s.add(key)
+    db.flush()
+
+
+def _clean_review(db, org_id, survivor_id: int, victim_ids: list) -> None:
+    """Limpia el ruido de revision que deja la consolidacion.
+
+    Las variantes fundidas dejaban trazas que apuntan a un escenario ya
+    inexistente y aparecian en "por revisar" sin sentido. Y el superviviente,
+    marcado como posible duplicado, deja de serlo: la consolidacion resolvio esa
+    duda. Se quitan ambas cosas para que la revision solo tenga lo real.
+    """
+    from app.models import BCMScenario, IngestRecordTrace
+
+    if victim_ids:
+        db.query(IngestRecordTrace).filter(
+            IngestRecordTrace.organization_id == org_id,
+            IngestRecordTrace.table_name == "bcm_scenarios",
+            IngestRecordTrace.record_id.in_(victim_ids),
+        ).delete(synchronize_session=False)
+
+    surv = db.get(BCMScenario, survivor_id)
+    if surv is not None and hasattr(surv, "needs_review"):
+        surv.needs_review = False
+    for tr in db.query(IngestRecordTrace).filter_by(
+            organization_id=org_id, table_name="bcm_scenarios",
+            record_id=survivor_id).all():
+        tr.needs_review = False
+        if isinstance(tr.after, dict) and "_possible_duplicate" in tr.after:
+            after = dict(tr.after)
+            after.pop("_possible_duplicate", None)
+            tr.after = after
     db.flush()
 
 

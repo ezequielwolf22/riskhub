@@ -729,6 +729,69 @@ def list_deps(process_id: Optional[int] = None, db: Session = Depends(get_db),
     return [_dep_d(d) for d in q.all()]
 
 
+@router.get("/dependency-tree")
+def dependency_tree(db: Session = Depends(get_db), u: User = Depends(get_current_user)):
+    """Arbol Sede -> Proceso -> Dependencias (categorias ISO/TS 22317).
+
+    Fuente del mapa navegable: cada sede con sus procesos, y cada proceso con sus
+    dependencias agrupadas por tipo (sistemas/apps, proveedores, personas,
+    instalaciones, comunicaciones, otros procesos). Los procesos sin sede van en
+    "unassigned" para que no se pierdan.
+    """
+    org = u.organization_id
+    if not org:
+        return {"locations": [], "unassigned": [], "totals": {}}
+    from app.services.bcp_service import bia_completeness
+    locs = db.query(BCMLocation).filter_by(organization_id=org).all()
+    procs = db.query(BusinessProcess).filter_by(organization_id=org).all()
+    deps = db.query(BCPDependency).filter_by(organization_id=org).all()
+
+    deps_by_proc: dict = {}
+    for d in deps:
+        deps_by_proc.setdefault(d.process_id, []).append(d)
+    proc_name = {p.id: p.name for p in procs}
+
+    def _proc_node(p):
+        try:
+            bia = bia_completeness(None, p)["pct"]
+        except Exception:
+            bia = 0
+        grouped: dict = {}
+        for d in deps_by_proc.get(p.id, []):
+            grouped.setdefault(d.dependency_type or "other", []).append({
+                "id": d.id, "name": d.name, "is_critical": bool(d.is_critical),
+                "rto_hours": d.rto_hours,
+                "depends_on_process": proc_name.get(d.depends_on_process_id),
+            })
+        return {
+            "id": p.id, "name": p.name, "criticality": p.criticality,
+            "rto_hours": p.rto_hours, "mtpd_hours": p.mtpd_hours, "bia_pct": bia,
+            "dependencies": grouped, "dep_count": len(deps_by_proc.get(p.id, [])),
+        }
+
+    procs_by_loc: dict = {}
+    unassigned = []
+    for p in procs:
+        if p.location_id:
+            procs_by_loc.setdefault(p.location_id, []).append(p)
+        else:
+            unassigned.append(p)
+
+    location_nodes = [{
+        "id": loc.id, "name": loc.name,
+        "city": getattr(loc, "city", None), "country": getattr(loc, "country", None),
+        "processes": [_proc_node(p) for p in procs_by_loc.get(loc.id, [])],
+        "process_count": len(procs_by_loc.get(loc.id, [])),
+    } for loc in locs]
+
+    return {
+        "locations": location_nodes,
+        "unassigned": [_proc_node(p) for p in unassigned],
+        "totals": {"locations": len(locs), "processes": len(procs),
+                   "dependencies": len(deps)},
+    }
+
+
 @router.post("/dependencies", status_code=201)
 def create_dep(body: DepIn, request: Request, db: Session = Depends(get_db), u: User = Depends(require_analyst)):
     lang = get_lang(request)
