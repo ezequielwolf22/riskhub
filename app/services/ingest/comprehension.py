@@ -34,7 +34,7 @@ logger = logging.getLogger("riskhub.ingest.comprehension")
 # Version del prompt de extraccion. Al cambiar los prompts se sube este numero
 # para invalidar la cache de lecturas (una lectura vieja podria no reflejar las
 # reglas nuevas). Es lo que permite que la cache por SHA sea segura.
-EXTRACTION_PROMPT_VERSION = "2"
+EXTRACTION_PROMPT_VERSION = "3"
 
 DOC_KINDS = ("bia", "policy", "bcp", "drp", "test_report", "exercise_programme",
              "contact_list", "supplier_list", "risk_assessment", "other")
@@ -176,7 +176,13 @@ No extraigas datos todavia. Tu unica tarea ahora es construir el perfil:
    usa el suyo; transcribe el suyo, no el que te parezca mejor.
 
 3. ESCENARIOS: el catalogo de escenarios de indisponibilidad que maneja, con su
-   codigo propio si lo tiene, agrupados en las cuatro familias.
+   codigo propio si lo tiene, agrupados en las cuatro familias. Este catalogo
+   suele estar declarado en el documento de metodo o procedimiento (una lista
+   cerrada). Extrae ESA lista canonica. NO inventes un escenario por cada
+   proveedor o tecnologia: "caida de infraestructura AWS", "...GCP", "...OVH" son
+   el MISMO escenario de indisponibilidad de sistemas; el proveedor es una
+   dependencia, no un escenario. Un catalogo de escenarios bien hecho tiene del
+   orden de 10-20 entradas, no cientos.
 
 4. REGLAS DE APLICABILIDAD: si el cliente dice explicitamente que ciertos
    escenarios no aplican a ciertas sedes, declaralo como regla CON SU
@@ -350,7 +356,29 @@ Reglas especificas del BIA (bcm_scenario_assessment) — son las que mas fallan:
 - Extrae TODOS los procesos y TODAS las valoraciones de la plantilla, no una
   muestra. Si una hoja tiene doce procesos, saca los doce.
 - "impacts" tiene la forma {dimension: {horizonte: nivel}} usando las dimensiones
-  y horizontes del metodo del cliente que aparecen en el perfil."""
+  y horizontes del metodo del cliente que aparecen en el perfil.
+
+CONSOLIDACION (lo mas importante para que el resultado tenga sentido):
+- No leas este documento como si fuera el unico. Cruza lo que dice con el
+  CATALOGO CANONICO de la organizacion que se te da mas abajo. Si algo que
+  mencionas ya existe en ese catalogo (un escenario, un proceso, una sede),
+  referencialo con su NOMBRE EXACTO. Estas ENRIQUECIENDO esa entidad, no creando
+  otra. Crear una variante con otro nombre es el peor error: parte la realidad
+  en trozos y llena la revision de dudas falsas.
+- El MISMO escenario descrito con otro proveedor o tecnologia (AWS / GCP / OVH /
+  un SaaS) o con otras palabras es UN SOLO escenario. El proveedor NO es un
+  escenario nuevo: es una DEPENDENCIA del proceso. No multipliques escenarios por
+  proveedor ni por sede.
+
+DEPENDENCIAS (metodo ISO/TS 22317) — se modelan POR PROCESO, en categorias:
+- Cada proceso depende de: aplicaciones/sistemas (dependency_type "IT_system"),
+  personas ("personnel"), proveedores ("supplier"), instalaciones ("facility"),
+  comunicaciones ("communication") y otros procesos ("process").
+- Cuando el documento nombra el sistema, la app o el proveedor del que depende un
+  proceso (p.ej. "corre sobre AWS", "telefonia de RingCentral", "base de datos
+  X"), crea una dependencia (entidad bcp_dependency) enlazada al proceso por
+  "_ref_process_id", con su nombre y su dependency_type. Ahi es donde vive el
+  proveedor de infraestructura, no en un escenario aparte."""
 
 
 def _cache_get(db, org_id, sha256):
@@ -390,6 +418,66 @@ def _cache_put(db, org_id, sha256, filename, result):
                      exc_info=True)
 
 
+def _canonical_catalog(db, org_id) -> dict:
+    """Escenarios, procesos y sedes que YA existen para la org.
+
+    Es la columna vertebral de identidad: crece documento a documento y es lo que
+    permite CONSOLIDAR en vez de duplicar. Se lee de la base (no del perfil) para
+    que refleje lo realmente materializado hasta ahora.
+    """
+    out = {"scenarios": [], "processes": [], "locations": []}
+    if not org_id:
+        return out
+    try:
+        from app.models import BCMLocation, BCMScenario, BusinessProcess
+        out["scenarios"] = [(s.code, s.name) for s in db.query(BCMScenario)
+                            .filter_by(organization_id=org_id).all() if s.name]
+        out["processes"] = [p.name for p in db.query(BusinessProcess)
+                            .filter_by(organization_id=org_id).all() if p.name]
+        out["locations"] = [loc.name for loc in db.query(BCMLocation)
+                            .filter_by(organization_id=org_id).all() if loc.name]
+    except Exception:
+        logger.debug("ingest: no se pudo leer el catalogo canonico", exc_info=True)
+    return out
+
+
+def _catalog_block(db, org_id, profile: Optional[dict]) -> str:
+    """Bloque de catalogo canonico que se inyecta en la pasada 2.
+
+    Combina lo ya materializado (autoridad) con lo que el perfil dedujo (por si el
+    catalogo aun esta vacio en el primer documento). Es lo que el modelo usa para
+    mapear cada mencion a una entidad existente en vez de inventar variantes.
+    """
+    cat = _canonical_catalog(db, org_id)
+    prof = profile or {}
+    prof_scen = [(s.get("code"), s.get("name"))
+                 for s in (prof.get("scenarios") or []) if s.get("name")]
+    prof_loc = [loc.get("name") for loc in
+                ((prof.get("structure") or {}).get("locations") or []) if loc.get("name")]
+
+    scen = cat["scenarios"] or prof_scen
+    locs = cat["locations"] or prof_loc
+    procs = cat["processes"]
+
+    def _lines(items, fmt):
+        return "\n".join(f"    - {fmt(i)}" for i in items[:120]) or "    (ninguno todavia)"
+
+    scen_txt = _lines(scen, lambda t: f"{(t[0] + ' ') if t[0] else ''}{t[1]}")
+    loc_txt = _lines(locs, lambda x: x)
+    proc_txt = _lines(procs, lambda x: x)
+
+    return (
+        "\n\nCATALOGO CANONICO DE LA ORGANIZACION (ya existe en la plataforma).\n"
+        "NO crees variantes de estas entidades: mapea lo que menciona el documento\n"
+        "a ellas por su significado y referencialas por su NOMBRE EXACTO. Solo crea\n"
+        "una entidad nueva si de verdad no encaja en ninguna.\n"
+        f"  ESCENARIOS:\n{scen_txt}\n"
+        f"  SEDES:\n{loc_txt}\n"
+        f"  PROCESOS:\n{proc_txt}\n"
+        f"  METODO BIA del cliente: {prof.get('bia_method') or 'no declarado'}\n"
+    )
+
+
 def build_source_map(db, org_id: Optional[int], document: dict,
                      profile: Optional[dict] = None, lang: str = "es",
                      tier: str = "deep", use_cache: bool = True) -> dict:
@@ -411,25 +499,7 @@ def build_source_map(db, org_id: Optional[int], document: dict,
             return cached
 
     api_key, model = _api_key_and_model(db, org_id, tier)
-
-    profile_block = ""
-    if profile:
-        locations = [
-            loc.get("name") for loc in
-            ((profile.get("structure") or {}).get("locations") or [])
-            if loc.get("name")
-        ]
-        scenarios = [
-            f"{s.get('code') or ''} {s.get('name')}".strip()
-            for s in (profile.get("scenarios") or [])
-        ]
-        profile_block = (
-            "\n\nPERFIL DE LA ORGANIZACION (usa estos nombres exactos al "
-            "referenciar sedes y escenarios):\n"
-            f"- sedes: {', '.join(locations) or 'ninguna conocida'}\n"
-            f"- escenarios: {', '.join(scenarios) or 'ninguno conocido'}\n"
-            f"- metodo BIA: {profile.get('bia_method') or 'no declarado'}\n"
-        )
+    profile_block = _catalog_block(db, org_id, profile)
 
     body = render_for_llm(document, max_chars=MAX_DOC_CHARS)
     parsed, msg = structured_message(
