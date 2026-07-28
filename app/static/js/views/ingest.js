@@ -29,6 +29,9 @@ const ViewIngest = (() => {
   let _reviewFilterEntity = 'all';
   let _reviewFilterKind = 'all';
   let _reviewCollapsed = {};
+  let _sectionCollapsed = {};   // colapso de las secciones grandes, por clave
+  let _mapCollapsed = {};       // colapso de cada tarjeta "como lo entendi", por id
+  const _SECTION_KEYS = ['maps', 'review', 'conflicts', 'gaps', 'issues'];
   let _conflicts = [];
   let _profile = null;
   let _overrides = [];
@@ -743,12 +746,16 @@ const ViewIngest = (() => {
     }
   }
 
-  function _renderBatch() {
+  // `jumpKey` opcional: si viene, se hace scroll a esa seccion; si no, se
+  // PRESERVA la posicion de scroll actual (re-render por aceptar/revertir/
+  // colapsar no debe tirar la ventana arriba).
+  function _renderBatch(jumpKey) {
     const box = document.getElementById('ing-detail');
     if (!box || !_batch) return;
     const b = _batch;
     const s = b.summary || {};
     const canUndo = Auth.isAdmin() && b.status !== 'undone';
+    const keepY = window.scrollY;
     box.innerHTML = `
       <div class="card" style="border-left:3px solid var(--brand-purple);">
         <div style="display:flex;justify-content:space-between;align-items:baseline;
@@ -780,6 +787,7 @@ const ViewIngest = (() => {
         ${_docsSection(b)}
       </div>
 
+      ${_sectionNav(b, s)}
       ${_mapsSection(b)}
       ${_reviewSection()}
       ${_conflictsSection()}
@@ -787,19 +795,97 @@ const ViewIngest = (() => {
       ${_issuesSection(s)}
     `;
 
+    // Restaurar scroll (o saltar a una seccion) SIN volver arriba.
+    if (jumpKey) {
+      const target = document.getElementById('ing-sec-' + jumpKey);
+      if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    } else {
+      window.scrollTo(0, keepY);
+    }
+
     const close = document.getElementById('ing-close-detail');
     if (close) close.onclick = () => { box.innerHTML = ''; _batch = null; };
     const undo = document.getElementById('ing-undo-btn');
     if (undo) undo.onclick = () => _confirmUndo(b, s);
     _wireReview();
     _wireConflicts();
+    _wireSections();
     box.querySelectorAll('[data-map-toggle]').forEach(btn => {
       btn.onclick = () => {
-        const panel = document.getElementById('ing-map-' + btn.dataset.mapToggle);
-        if (!panel) return;
-        const open = panel.style.display !== 'none';
-        panel.style.display = open ? 'none' : '';
-        btn.textContent = open ? t('ingest.map.expand') : t('ingest.map.collapse');
+        const id = btn.dataset.mapToggle;
+        _mapCollapsed[id] = !_mapCollapsed[id];
+        const panel = document.getElementById('ing-map-' + id);
+        if (panel) panel.style.display = _mapCollapsed[id] ? 'none' : '';
+        btn.textContent = _mapCollapsed[id] ? t('ingest.map.expand') : t('ingest.map.collapse');
+      };
+    });
+  }
+
+  // Tarjeta de seccion grande, colapsable como un todo. El estado de colapso se
+  // guarda por clave y sobrevive a cualquier re-render.
+  function _secCard(key, title, hint, bodyHtml, badge) {
+    const collapsed = !!_sectionCollapsed[key];
+    const badgeHtml = (badge != null && badge !== '')
+      ? ` <span class="badge badge-medium" style="margin-left:6px;">${badge}</span>` : '';
+    return `
+      <div class="card" id="ing-sec-${key}" style="scroll-margin-top:60px;">
+        <div data-section-toggle="${key}" style="display:flex;justify-content:space-between;
+             align-items:center;cursor:pointer;user-select:none;">
+          <h3 style="margin:0;">${title}${badgeHtml}</h3>
+          <span style="color:var(--text-subtle);font-size:18px;line-height:1;">${collapsed ? '▸' : '▾'}</span>
+        </div>
+        <div style="${collapsed ? 'display:none;' : 'margin-top:12px;'}">
+          ${hint ? `<p style="font-size:13px;color:var(--text-muted);margin:0 0 12px;">${hint}</p>` : ''}
+          ${bodyHtml}
+        </div>
+      </div>`;
+  }
+
+  // Indice de secciones: barra sticky para saltar entre secciones y colapsar o
+  // expandir todas de una vez.
+  function _sectionNav(b, s) {
+    const items = [];
+    if ((b.source_maps || []).length) items.push(['maps', t('ingest.map.title')]);
+    if (_records.length) items.push(['review', t('ingest.review.title')]);
+    items.push(['conflicts', t('ingest.conflicts.title')]);
+    items.push(['gaps', t('ingest.gaps.title')]);
+    if ((s.warnings || []).length || (s.skipped || []).length)
+      items.push(['issues', t('ingest.warnings.title')]);
+    if (items.length < 2) return '';
+    return `
+      <div style="position:sticky;top:0;z-index:5;background:var(--bg);
+                  border:1px solid var(--border);border-radius:10px;padding:8px 10px;
+                  margin:14px 0;display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
+        <span style="font-size:11px;text-transform:uppercase;letter-spacing:.06em;
+                     color:var(--text-subtle);font-weight:700;margin-right:2px;">${t('ingest.nav.sections')}</span>
+        ${items.map(([k, label]) =>
+          `<button class="btn btn-ghost btn-xs" data-section-jump="${k}">${UI.esc(label)}</button>`).join('')}
+        <span style="flex:1;"></span>
+        <button class="btn btn-ghost btn-xs" data-section-all="collapse">${t('ingest.nav.collapse_all')}</button>
+        <button class="btn btn-ghost btn-xs" data-section-all="expand">${t('ingest.nav.expand_all')}</button>
+      </div>`;
+  }
+
+  function _wireSections() {
+    document.querySelectorAll('[data-section-toggle]').forEach(h => {
+      h.onclick = () => {
+        const k = h.dataset.sectionToggle;
+        _sectionCollapsed[k] = !_sectionCollapsed[k];
+        _renderBatch();
+      };
+    });
+    document.querySelectorAll('[data-section-jump]').forEach(btn => {
+      btn.onclick = () => {
+        const k = btn.dataset.sectionJump;
+        _sectionCollapsed[k] = false;   // saltar a una seccion la expande
+        _renderBatch(k);
+      };
+    });
+    document.querySelectorAll('[data-section-all]').forEach(btn => {
+      btn.onclick = () => {
+        const collapse = btn.dataset.sectionAll === 'collapse';
+        _SECTION_KEYS.forEach(k => { _sectionCollapsed[k] = collapse; });
+        _renderBatch();
       };
     });
   }
@@ -843,12 +929,8 @@ const ViewIngest = (() => {
   function _mapsSection(b) {
     const maps = b.source_maps || [];
     if (!maps.length) return '';
-    return `
-      <div class="card">
-        <h3 style="margin-top:0;">${t('ingest.map.title')}</h3>
-        <p style="font-size:13px;color:var(--text-muted);margin:0 0 14px;">${t('ingest.map.hint')}</p>
-        ${maps.map(m => _mapCard(m)).join('')}
-      </div>`;
+    return _secCard('maps', t('ingest.map.title'), t('ingest.map.hint'),
+      maps.map(m => _mapCard(m)).join(''), maps.length);
   }
 
   function _mapCard(m) {
@@ -869,11 +951,11 @@ const ViewIngest = (() => {
           </div>
           <div style="display:flex;gap:8px;align-items:center;">
             ${_confBadge(m.confidence)}
-            <button class="btn btn-ghost btn-sm" data-map-toggle="${m.id}">${t('ingest.map.collapse')}</button>
+            <button class="btn btn-ghost btn-sm" data-map-toggle="${m.id}">${_mapCollapsed[m.id] ? t('ingest.map.expand') : t('ingest.map.collapse')}</button>
           </div>
         </div>
 
-        <div id="ing-map-${m.id}">
+        <div id="ing-map-${m.id}"${_mapCollapsed[m.id] ? ' style="display:none;"' : ''}>
           ${m.rationale ? `
             <div style="margin-top:12px;padding:10px 14px;background:var(--bg-2);
                         border-radius:8px;font-size:13px;line-height:1.7;font-style:italic;">
@@ -1013,11 +1095,15 @@ const ViewIngest = (() => {
     return 'other';
   }
 
+  function _isReviewDone(r) {
+    return !!r.reverted_at || r._resolved === 'accepted';
+  }
+
   function _reviewSection() {
-    const pending = _records.filter(r => !r.reverted_at);
+    const pending = _records.filter(r => !_isReviewDone(r));
     if (!_records.length) {
-      return `<div class="card"><h3 style="margin-top:0;">${t('ingest.review.title')}</h3>
-        <p class="text-muted">${t('ingest.review.empty')}</p></div>`;
+      return _secCard('review', t('ingest.review.title'), '',
+        `<p class="text-muted">${t('ingest.review.empty')}</p>`, '');
     }
     // Cada registro conserva su indice original en _records (el wiring va por indice)
     const indexed = _records.map((r, i) => ({ r, i }));
@@ -1052,24 +1138,36 @@ const ViewIngest = (() => {
       </div>`;
     }).join('');
 
-    return `<div class="card">
-      <h3 style="margin-top:0;">${t('ingest.review.title')}</h3>
-      <p style="font-size:13px;color:var(--text-muted);margin:0 0 12px;">${t('ingest.review.hint')}</p>
+    const body = `
       <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px;">
         <select id="rev-f-entity" class="input" style="width:auto;min-width:150px;">${entOpts}</select>
         <select id="rev-f-kind" class="input" style="width:auto;min-width:150px;">${kindOpts}</select>
         <span style="font-size:12px;color:var(--text-subtle);">${
           t('ingest.review.count', { n: pending.length })}</span>
       </div>
-      ${filtered.length ? sections : `<p class="text-muted">${t('ingest.review.none_match')}</p>`}
-    </div>`;
+      ${filtered.length ? sections : `<p class="text-muted">${t('ingest.review.none_match')}</p>`}`;
+    return _secCard('review', t('ingest.review.title'), t('ingest.review.hint'),
+      body, pending.length || '');
   }
 
   function _reviewRow(r, i) {
-    const done = !!r.reverted_at;
+    const accepted = r._resolved === 'accepted';
+    const done = !!r.reverted_at || accepted;
     const name = (r.after && (r.after.name || r.after.code)) || ('#' + r.record_id);
+    let actions;
+    if (r.reverted_at) {
+      actions = `<span class="badge badge-muted">${t('ingest.review.reverted')}</span>
+        <button class="btn btn-ghost btn-xs" data-restore="${i}">${t('ingest.review.restore')}</button>`;
+    } else if (accepted) {
+      actions = `<span class="badge badge-low">${t('ingest.review.accepted')}</span>`;
+    } else {
+      actions = `<button class="btn btn-ghost btn-xs" data-edit="${i}">${t('ingest.review.edit')}</button>
+        <button class="btn btn-ghost btn-xs" data-accept="${i}">${t('ingest.review.accept')}</button>
+        <button class="btn btn-ghost btn-xs" data-revert="${i}"
+          style="color:var(--risk-high);">${t('ingest.review.revert')}</button>`;
+    }
     return `<div style="border:1px solid var(--border);border-radius:10px;padding:12px;
-                ${done ? 'opacity:.45;' : ''}">
+                ${done ? 'opacity:.5;' : ''}">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;">
         <div style="min-width:0;">
           <span class="badge badge-muted">${UI.esc(_label('entity', r.entity))}</span>
@@ -1078,15 +1176,7 @@ const ViewIngest = (() => {
             ${UI.esc(_label('action', r.action))}</span>
           ${_confBadge(r.confidence) || ''}
         </div>
-        <div style="display:flex;gap:6px;flex-shrink:0;">
-          ${done
-            ? `<span class="badge badge-muted">${t('ingest.review.reverted')}</span>
-               <button class="btn btn-ghost btn-xs" data-restore="${i}">${t('ingest.review.restore')}</button>`
-            : `<button class="btn btn-ghost btn-xs" data-edit="${i}">${t('ingest.review.edit')}</button>
-               <button class="btn btn-ghost btn-xs" data-accept="${i}">${t('ingest.review.accept')}</button>
-               <button class="btn btn-ghost btn-xs" data-revert="${i}"
-                 style="color:var(--risk-high);">${t('ingest.review.revert')}</button>`}
-        </div>
+        <div style="display:flex;gap:6px;flex-shrink:0;align-items:center;">${actions}</div>
       </div>
       <div style="font-size:12px;line-height:1.6;margin-top:8px;">${_diff(r.before, r.after)}</div>
       ${_dupNote(r)}
@@ -1094,7 +1184,6 @@ const ViewIngest = (() => {
   }
 
   function _wireReview() {
-    const reload = () => { if (_batch) _openBatch(_batch.id); };
     // Filtros y secciones colapsables (re-render local, sin llamada al backend)
     const fe = document.getElementById('rev-f-entity');
     if (fe) fe.onchange = () => { _reviewFilterEntity = fe.value; _renderBatch(); };
@@ -1113,7 +1202,10 @@ const ViewIngest = (() => {
         if (!rec || !await UI.confirm(t('ingest.review.confirm_revert'))) return;
         btn.disabled = true;
         try { await Api.post(`/api/ingest/records/${rec.id}/revert`, {});
-          UI.toast(t('ingest.review.reverted_ok'), 'success'); reload();
+          UI.toast(t('ingest.review.reverted_ok'), 'success');
+          // Update local: no re-fetch, se conserva scroll y colapsos.
+          rec.reverted_at = new Date().toISOString(); rec._resolved = null;
+          _renderBatch();
         } catch (e) { UI.toast(e.message, 'error'); btn.disabled = false; }
       };
     });
@@ -1123,7 +1215,9 @@ const ViewIngest = (() => {
         if (!rec) return;
         btn.disabled = true;
         try { await Api.post(`/api/ingest/records/${rec.id}/accept`, {});
-          UI.toast(t('ingest.review.accepted_ok'), 'success'); reload();
+          UI.toast(t('ingest.review.accepted_ok'), 'success');
+          rec._resolved = 'accepted';
+          _renderBatch();
         } catch (e) { UI.toast(e.message, 'error'); btn.disabled = false; }
       };
     });
@@ -1133,7 +1227,9 @@ const ViewIngest = (() => {
         if (!rec) return;
         btn.disabled = true;
         try { await Api.post(`/api/ingest/records/${rec.id}/restore`, {});
-          UI.toast(t('ingest.review.restored_ok'), 'success'); reload();
+          UI.toast(t('ingest.review.restored_ok'), 'success');
+          rec.reverted_at = null; rec._resolved = null;
+          _renderBatch();
         } catch (e) { UI.toast(e.message, 'error'); btn.disabled = false; }
       };
     });
@@ -1172,7 +1268,9 @@ const ViewIngest = (() => {
       try {
         await Api.patch(`/api/ingest/records/${rec.id}`, { fields: out });
         UI.closeModal(); UI.toast(t('ingest.review.saved_ok'), 'success');
-        if (_batch) _openBatch(_batch.id);
+        // Reflejar los cambios en local sin re-fetch (conserva scroll/colapsos).
+        rec.after = Object.assign({}, rec.after, out);
+        _renderBatch();
       } catch (e) { UI.toast(e.message, 'error'); }
     };
   }
@@ -1180,14 +1278,11 @@ const ViewIngest = (() => {
   // ---------- 6. Conflictos ----------
 
   function _conflictsSection() {
-    return `
-      <div class="card">
-        <h3 style="margin-top:0;">${t('ingest.conflicts.title')}</h3>
-        <p style="font-size:13px;color:var(--text-muted);margin:0 0 12px;">${t('ingest.conflicts.hint')}</p>
-        ${_conflicts.length
-          ? _conflicts.map((c, i) => _conflictCard(c, i)).join('')
-          : `<p class="text-muted">${t('ingest.conflicts.empty')}</p>`}
-      </div>`;
+    const body = _conflicts.length
+      ? _conflicts.map((c, i) => _conflictCard(c, i)).join('')
+      : `<p class="text-muted">${t('ingest.conflicts.empty')}</p>`;
+    return _secCard('conflicts', t('ingest.conflicts.title'), t('ingest.conflicts.hint'),
+      body, _conflicts.length || '');
   }
 
   function _conflictCard(c, idx) {
@@ -1267,7 +1362,9 @@ const ViewIngest = (() => {
       await Api.post(`/api/ingest/conflicts/${conflict.id}/resolve`, { value });
       UI.toast(t('ingest.conflicts.resolved'), 'success');
       _loadOverrides();
-      if (_batch) _openBatch(_batch.id);
+      // Update local sin re-fetch: conserva scroll y colapsos.
+      conflict.resolved_value = value; conflict.status = 'user_resolved';
+      _renderBatch();
     } catch (e) {
       UI.toast(e.message, 'error');
       if (btn) btn.disabled = false;
@@ -1280,11 +1377,7 @@ const ViewIngest = (() => {
     const g = summary.gaps || {};
     const byReason = g.by_reason || {};
     const keys = Object.keys(byReason);
-    return `
-      <div class="card">
-        <h3 style="margin-top:0;">${t('ingest.gaps.title')}</h3>
-        <p style="font-size:13px;color:var(--text-muted);margin:0 0 12px;">${t('ingest.gaps.hint')}</p>
-        ${keys.length ? `
+    const body = keys.length ? `
           <div style="display:flex;flex-wrap:wrap;gap:10px;">
             ${keys.map(k => _stat(_label('gap', k), _fmtNum(byReason[k]), 'var(--brand-orange)')).join('')}
           </div>
@@ -1292,8 +1385,9 @@ const ViewIngest = (() => {
             ${t('ingest.gaps.total', { n: _fmtNum(g.total || 0) })}
             ${g.recalculated != null ? ` · ${t('ingest.gaps.recalculated', { n: _fmtNum(g.recalculated) })}` : ''}
           </p>`
-        : `<p class="text-muted">${t('ingest.gaps.empty')}</p>`}
-      </div>`;
+      : `<p class="text-muted">${t('ingest.gaps.empty')}</p>`;
+    return _secCard('gaps', t('ingest.gaps.title'), t('ingest.gaps.hint'), body,
+      keys.length ? _fmtNum(g.total || 0) : '');
   }
 
   // ---------- Avisos y filas descartadas ----------
@@ -1302,15 +1396,14 @@ const ViewIngest = (() => {
     const warnings = summary.warnings || [];
     const skipped = summary.skipped || [];
     if (!warnings.length && !skipped.length) return '';
-    return `
-      <div class="card">
+    const body = `
         ${warnings.length ? `
-          <h3 style="margin-top:0;">${t('ingest.warnings.title')}</h3>
+          <h4 style="margin:0 0 6px;">${t('ingest.warnings.title')}</h4>
           <ul style="font-size:12px;line-height:1.7;margin:0 0 14px;padding-left:20px;">
             ${warnings.map(w => `<li>${UI.esc(_val(w))}</li>`).join('')}
           </ul>` : ''}
         ${skipped.length ? `
-          <h3 style="margin-top:${warnings.length ? '18px' : '0'};">${t('ingest.skipped.title')}</h3>
+          <h4 style="margin:${warnings.length ? '18px' : '0'} 0 6px;">${t('ingest.skipped.title')}</h4>
           <p style="font-size:12px;color:var(--text-muted);margin:0 0 8px;">${t('ingest.skipped.hint')}</p>
           <div style="overflow-x:auto;">
             <table class="data">
@@ -1328,8 +1421,9 @@ const ViewIngest = (() => {
                       title="${UI.esc(_val(sk.row))}">${UI.esc(_val(sk.row))}</td>
                 </tr>`).join('')}</tbody>
             </table>
-          </div>` : ''}
-      </div>`;
+          </div>` : ''}`;
+    return _secCard('issues', t('ingest.warnings.title'), '', body,
+      (warnings.length + skipped.length) || '');
   }
 
   // ---------- 9. Deshacer el lote ----------

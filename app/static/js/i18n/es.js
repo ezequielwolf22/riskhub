@@ -3457,6 +3457,11 @@ const I18N_ES = {
       failed: "Falló",
       no_docs: "El lote no registró documentos.",
     },
+    nav: {
+      sections: "Ir a",
+      collapse_all: "Colapsar todo",
+      expand_all: "Expandir todo",
+    },
     map: {
       title: "Qué encontró en cada documento",
       hint: "Por cada documento, esto es lo que el agente leyó y cuántas filas sacó. Sirve para comprobar que entendió bien el documento antes de fiarte de los datos.",
@@ -3498,6 +3503,7 @@ const I18N_ES = {
       revert: "Deshacer",
       reverted: "Deshecho",
       reverted_ok: "Deshecho.",
+      accepted: "Aceptado",
       confirm_revert: "¿Deshacer esto? Vuelve a como estaba antes de importar. Podrás rehacerlo si te equivocas. El resto no se toca.",
       restore: "Rehacer",
       restored_ok: "Rehecho: vuelve a estar como lo dejó el agente.",

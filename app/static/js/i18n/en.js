@@ -3453,6 +3453,11 @@ const I18N_EN = {
       failed: "Failed",
       no_docs: "The batch recorded no documents.",
     },
+    nav: {
+      sections: "Go to",
+      collapse_all: "Collapse all",
+      expand_all: "Expand all",
+    },
     map: {
       title: "What it found in each document",
       hint: "For each document, this is what the agent read and how many rows it produced. Use it to check it understood the document before trusting the data.",
@@ -3494,6 +3499,7 @@ const I18N_EN = {
       revert: "Undo",
       reverted: "Undone",
       reverted_ok: "Undone.",
+      accepted: "Accepted",
       confirm_revert: "Undo this? It goes back to how it was before importing. You can redo it if you change your mind. The rest is untouched.",
       restore: "Redo",
       restored_ok: "Redone: back to what the agent left.",
