@@ -4438,6 +4438,7 @@ const I18N_EN = {
     btn_analyze_ai: "Analyze with AI",
     // Import/export tab
     export_desc: "Download all your processes, dependencies, plans and tests in Excel format.",
+    export_word_generating: "Generating Word report...",
     drop_zone_label: "Drag the file here or click",
     import_ai_hint: "Claude will analyze the structure of your Excel and automatically map the BCP fields, even if it doesn't follow the exact template.",
     // Process modal

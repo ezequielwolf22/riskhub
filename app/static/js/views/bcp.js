@@ -252,6 +252,17 @@ const ViewBcp = (() => {
     window.location.href = '/api/bcp/export';
   }
 
+  // Informe BCP en Word. `section` vacio = informe completo; o una seccion
+  // suelta (bia, scenarios, strategies, plans, tests, suppliers, dependencies,
+  // status). Usa Api.download para llevar el token de sesion.
+  function _exportWord(section) {
+    const q = section ? ('?sections=' + encodeURIComponent(section)) : '';
+    const fname = section ? ('BCP_' + section + '.docx') : 'Informe_BCP.docx';
+    UI.toast(t('bcp.export_word_generating') || 'Generando informe Word...', 'info');
+    Api.download('/api/bcp/export/word' + q, fname)
+      .catch(e => UI.toast((e && e.message) || 'Error al exportar', 'error'));
+  }
+
   // Backward compat
   function _switchTab(tab) {
     const toStep = { locations:1, processes:2, bia:2, dependencies:3, suppliers:3, strategies:4, plans:4, evidence:5, import:5 };
@@ -1313,13 +1324,26 @@ const ViewBcp = (() => {
         <div class="card-header"><h3><i class="ti ti-table-export"></i> Exportar datos actuales</h3></div>
         <div class="card-body">
           <p style="color:var(--text-muted);font-size:14px;">${t('bcp.export_desc')}</p>
-          <a href="/api/bcp/export" class="btn btn-secondary" download="BCP_datos.xlsx">
+          <div style="font-size:12px;font-weight:700;text-transform:uppercase;color:var(--text-subtle);margin-bottom:6px;">Informe Word (.docx)</div>
+          <button class="btn btn-primary" onclick="ViewBcp._exportWord('')">
+            <i class="ti ti-file-text"></i> Informe BCP completo
+          </button>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;">
+            ${[['bia','BIA'],['scenarios','Escenarios'],['strategies','Estrategias (DRP)'],
+               ['plans','Planes'],['tests','Pruebas'],['suppliers','Proveedores'],
+               ['dependencies','Dependencias'],['status','Estado']]
+              .map(([k,lbl]) => `<button class="btn btn-secondary btn-sm" onclick="ViewBcp._exportWord('${k}')">
+                <i class="ti ti-download"></i> ${lbl}</button>`).join('')}
+          </div>
+          <hr style="border:none;border-top:1px solid var(--border);margin:14px 0;">
+          <div style="font-size:12px;font-weight:700;text-transform:uppercase;color:var(--text-subtle);margin-bottom:6px;">Datos (Excel)</div>
+          <button class="btn btn-secondary" onclick="Api.download('/api/bcp/export','BCP_datos.xlsx')">
             <i class="ti ti-download"></i> Descargar BCP_datos.xlsx
-          </a>
+          </button>
           <div style="margin-top:12px;">
-            <a href="/api/bcp/import/template" class="btn btn-secondary btn-sm" download>
+            <button class="btn btn-secondary btn-sm" onclick="Api.download('/api/bcp/import/template','BCP_Plantilla.xlsx')">
               <i class="ti ti-file-download"></i> Descargar plantilla vacía
-            </a>
+            </button>
           </div>
         </div>
       </div>
@@ -8385,7 +8409,7 @@ const ViewBcp = (() => {
     _saveTest, _openTestResultModal, _saveTestResult, _onResultChange,
     _editSL, _saveSL, _delSL,
     _openEPModal, _saveEP,
-    _handleDrop, _handleFileSelect,
+    _handleDrop, _handleFileSelect, _exportBcp, _exportWord,
     _setImportMode, _onFileSelect, _renderImportPreview, _confirmImport,
     _runBcpAiAnalysis,
     _toggleLocChildren, _setLocFilter, _editLocation, _modalLocation,

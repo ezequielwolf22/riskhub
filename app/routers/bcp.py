@@ -1507,6 +1507,30 @@ def export_bcp_excel(request: Request, db: Session = Depends(get_db), u: User = 
     )
 
 
+@router.get("/export/word")
+def export_bcp_word(request: Request, sections: Optional[str] = None,
+                    db: Session = Depends(get_db), u: User = Depends(get_current_user)):
+    """Informe BCP en Word (.docx) editable.
+
+    `sections` es una lista separada por comas (status,bia,scenarios,strategies,
+    plans,tests,suppliers,dependencies) o vacia/"all" para el informe completo.
+    """
+    org = _org(u, get_lang(request))
+    from app.models import Organization
+    from app.services.bcp_word_service import generate_bcp_word, normalize_sections
+    org_row = db.get(Organization, org)
+    org_name = org_row.name if org_row else "Organizacion"
+    sects = normalize_sections(sections)
+    content = generate_bcp_word(db, org, org_name=org_name, sections=sects)
+    fname = "Informe_BCP.docx" if len(sects) > 1 else ("BCP_%s.docx" % sects[0])
+    log_action(db, u.id, "export", "bcp_word", ",".join(sects), {})
+    return Response(
+        content=content,
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        headers={"Content-Disposition": "attachment; filename=%s" % fname},
+    )
+
+
 @router.post("/import/ai-preview")
 async def import_ai_preview(
     request: Request,
