@@ -140,16 +140,24 @@ Multi-usuario con roles.
 - [ ] Pruebas end-to-end manuales de las vistas nuevas con usuario real
 - [ ] Backlog del modulo Plan Director/Tratamiento: priorizado en `RISKHUB_TREATMENT_MODULE_SPEC.md` (seccion "Backlog de mejoras") — no construir hasta validar con uso real
 
-Deploy: prod (91.99.83.202) actualizado a commit d63bde5 el 2026-07-24 — ingesta
-cognitiva BCP (escenarios/BIA por sede, motor de ingesta, comprension IA,
-generacion sin documentos), modulo Metodo de la organizacion (registro,
-formulas acotadas, extraccion con cita, conformidad) y diagnostico SharePoint.
-Las 11 tablas nuevas migradas y verificadas en prod, routers /api/method,
-/api/ingest y /api/bcp/scenarios respondiendo, cero errores de arranque. Backup
-pre-deploy verificado; rollback: `bash scripts/rollback.sh riskhub:20260724_093130`.
+Deploy: prod (91.99.83.202) actualizado a commit d5d70f2 el 2026-07-28. Entre
+d63bde5 (2026-07-24, nota anterior) y este deploy se habian acumulado en main
+23 commits sin que esta nota se actualizara — refinamiento completo de la
+ingesta BCP (cache SHA-256, deshacer/rehacer, documentacion dinamica,
+consolidacion del catalogo de escenarios ISO 22317, arbol de dependencias,
+export a Word, BIA por proceso dirigido por el metodo del cliente) — ya
+estaban corriendo en prod (commit ca15b1a) antes de este deploy. Lo unico
+nuevo en este deploy es el fix de `organizations.py` (borrado permanente de
+organizacion: la lista fija de tablas a limpiar antes del DELETE estaba
+desactualizada frente al modelo real y provocaba `FOREIGN KEY constraint
+failed`; ahora se descubre el esquema via `Base.metadata` y se borra en
+varias pasadas con SAVEPOINT por tabla para resolver dependencias
+circulares). Health check OK, backup pre-deploy verificado; rollback:
+`bash scripts/rollback.sh riskhub:20260728_141901`.
 **Pendiente**: validacion end-to-end contra la API real con el pack de OFA en
-una org de prueba aislada (credito de API ya recargado). Deploy previo estable
-en v6.3.0/bd068c2 (2026-07-18, Plan Director/Tratamiento).
+una org de prueba aislada (credito de API ya recargado). **Recordatorio para
+quien deployee**: actualizar esta nota en el mismo commit del deploy, no
+despues — asi no se repite el desfase de esta vez.
 
 ## Convenciones
 
