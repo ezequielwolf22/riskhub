@@ -24,7 +24,7 @@ from app.models import (BCMLocation, BCMScenario, BCMScenarioAssessment, BCPPlan
 from app.services.ingest import batch as batch_mod
 from app.services.ingest import conflicts as conflicts_mod
 from app.services.ingest import contracts
-from app.services.ingest.materializer import materialize
+from app.services.ingest.materializer import MaterializationResult, materialize
 from app.services.ingest.reconciler import find_match, normalize_name, similarity
 
 _ENGINE = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False})
@@ -272,6 +272,45 @@ def test_documentos_contradictorios_dejan_el_conflicto_registrado(db, bat):
     assert conflict.policy == "min"
     fuentes = {c.get("source_filename") for c in conflict.candidates}
     assert "DRP.docx" in fuentes
+
+
+def test_el_conflicto_cita_el_documento_real_del_valor_existente(db, bat):
+    """Subiendo todo de golpe, el valor 'ya cargado' lo puso otro documento del
+    pack: el conflicto debe citar ESE documento, no un generico."""
+    # El pipeline comparte un mismo result entre documentos: aqui igual.
+    result = MaterializationResult()
+    materialize(db, ORG, bat, "business_process",
+                [{"name": "Plataforma CAE", "rto_hours": 4}],
+                source_filename="BIA_Nalanda.xlsx", result=result)
+    db.commit()
+    materialize(db, ORG, bat, "business_process",
+                [{"name": "Plataforma CAE", "rto_hours": 6}],
+                source_filename="ISRT_03.docx", result=result)
+    db.commit()
+
+    conflict = db.query(IngestConflict).filter_by(
+        organization_id=ORG, field_name="rto_hours").one()
+    by_value = {c["value"]: c for c in conflict.candidates}
+    # El valor que ya estaba (4) lleva el documento que lo puso, no "valor ya cargado"
+    assert by_value[4]["source_filename"] == "BIA_Nalanda.xlsx"
+    assert by_value[6]["source_filename"] == "ISRT_03.docx"
+
+
+def test_valor_preexistente_sin_rastro_no_finge_un_documento(db, bat):
+    """Si el valor venia de una importacion anterior (sin procedencia en este
+    pack), el candidato va sin documento; la UI lo etiqueta aparte."""
+    db.add(BusinessProcess(organization_id=ORG, name="Portal CAE", rto_hours=8))
+    db.commit()
+    materialize(db, ORG, bat, "business_process",
+                [{"name": "Portal CAE", "rto_hours": 2}],
+                source_filename="DRP.docx", result=MaterializationResult())
+    db.commit()
+
+    conflict = db.query(IngestConflict).filter_by(
+        organization_id=ORG, field_name="rto_hours").one()
+    by_value = {c["value"]: c for c in conflict.candidates}
+    assert by_value[8]["source_filename"] is None       # sin fingir documento
+    assert by_value[2]["source_filename"] == "DRP.docx"
 
 
 # ── Deshacer y forzar ────────────────────────────────────────────────────────

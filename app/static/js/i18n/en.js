@@ -3521,6 +3521,7 @@ const I18N_EN = {
       auto_note: "For now the safest value is used. Change it if it is not right; your choice wins and survives re-importing.",
       use_custom: "Use this",
       from_doc: "from document {doc}",
+      pre_existing: "value already in the system (from an earlier import)",
       in_use: "in use",
       explain: "The same data comes differently from two documents. Choose which one is right:",
       title: "Data that appears different in two documents",

@@ -1309,8 +1309,11 @@ const ViewIngest = (() => {
                   ${isChosen ? `<span class="badge badge-purple" style="margin-left:6px;">
                     ${t('ingest.conflicts.in_use')}</span>` : ''}</div>
                 <div style="font-size:12px;color:var(--text-muted);margin-top:2px;">
-                  ${t('ingest.conflicts.from_doc', { doc: UI.esc(cand.source_filename || '?') })}
-                  ${cand.source_ref ? ` · ${UI.esc(String(cand.source_ref))}` : ''}</div>
+                  ${cand.source_filename
+                    ? `${t('ingest.conflicts.from_doc', { doc: UI.esc(cand.source_filename) })}${
+                        cand.source_ref ? ` · <span class="mono">${UI.esc(String(cand.source_ref))}</span>` : ''}`
+                    : `<em>${t('ingest.conflicts.pre_existing')}</em>${
+                        cand.source_ref ? ` · <span class="mono">${UI.esc(String(cand.source_ref))}</span>` : ''}`}</div>
               </div>
               ${isChosen ? '' : `<button class="btn btn-ghost btn-sm" data-cf="${idx}" data-cand="${ci}"
                 style="flex-shrink:0;">${t('ingest.conflicts.use_this')}</button>`}

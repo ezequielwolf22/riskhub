@@ -105,8 +105,21 @@ class MaterializationResult:
         self.conflicts = 0
         self.skipped: list[dict] = []
         self.warnings: list[str] = []
+        # Procedencia por campo escrito en ESTE pack: (tabla, id, campo) ->
+        # {filename, source_ref}. Permite que, cuando un documento posterior
+        # contradiga un valor, el conflicto cite el documento REAL que lo puso
+        # (y su punto exacto), en vez de un generico "valor ya cargado".
+        self.field_provenance: dict = {}
         # clave natural -> id, para resolver referencias dentro del mismo lote
         self.index: dict[tuple, int] = {}
+
+    def note_provenance(self, table: str, record_id, field: str,
+                        filename, source_ref) -> None:
+        if record_id is None or not filename:
+            return
+        self.field_provenance[(table, record_id, field)] = {
+            "filename": filename, "source_ref": source_ref,
+        }
 
     def _bump(self, bucket: dict, key: str) -> None:
         bucket[key] = bucket.get(key, 0) + 1
@@ -185,6 +198,7 @@ def materialize(db, org_id: Optional[int], batch, entity_key: str,
             else:
                 _create(db, org_id, batch, spec, model, values, confidence,
                         source_map_id, result, entity_key,
+                        source_filename=source_filename, source_ref=source_ref,
                         possible_duplicate=possible_dup)
             savepoint.commit()
         except Exception as exc:
@@ -225,7 +239,8 @@ def _missing_required(model, spec, values: dict, org_id) -> list[str]:
 # ── Alta ─────────────────────────────────────────────────────────────────────
 
 def _create(db, org_id, batch, spec, model, values, confidence,
-            source_map_id, result, entity_key, possible_duplicate=None) -> None:
+            source_map_id, result, entity_key, source_filename=None,
+            source_ref=None, possible_duplicate=None) -> None:
     needs_review = confidence < REVIEW_THRESHOLD or bool(possible_duplicate)
     payload = dict(spec.defaults or {})
     payload.update(values)
@@ -252,6 +267,14 @@ def _create(db, org_id, batch, spec, model, values, confidence,
         # Los codigos correlativos necesitan el id ya asignado
         spec.after_write(db, record)
         db.flush()
+
+    # Procedencia: este documento (y su punto) es el origen de cada campo que
+    # acaba de escribir. Si otro documento lo contradice luego, el conflicto
+    # citara este documento real, no un generico.
+    for k in values:
+        if hasattr(record, k):
+            result.note_provenance(model.__tablename__, record.id, k,
+                                   source_filename, source_ref)
 
     tr = batch_mod.trace(db, batch, entity_key, model.__tablename__, record.id,
                          "created", before=None,
@@ -313,6 +336,8 @@ def _update(db, org_id, batch, spec, model, record, values, fmap, confidence,
             if not _same(current, incoming):
                 setattr(record, name, incoming)
                 filled = True
+                result.note_provenance(model.__tablename__, record.id, name,
+                                       source_filename, source_ref)
             continue
         if _same(current, incoming):
             continue
@@ -328,8 +353,15 @@ def _update(db, org_id, batch, spec, model, record, values, fmap, confidence,
         if not _is_material_conflict(spec_field):
             continue
         policy = spec_field.conflict_policy if spec_field else "latest"
+        # Origen REAL del valor que ya estaba: si lo puso otro documento de este
+        # mismo pack, se cita ese documento y su punto exacto. Si no se rastrea
+        # (venia de una importacion anterior), el candidato va sin documento y la
+        # interfaz lo etiqueta como "valor que ya estaba", no "del documento X".
+        prov = result.field_provenance.get((model.__tablename__, record.id, name)) or {}
         candidates = [
-            conflicts_mod.Candidate(current, source_filename="valor ya cargado"),
+            conflicts_mod.Candidate(current,
+                                    source_filename=prov.get("filename"),
+                                    source_ref=prov.get("source_ref")),
             conflicts_mod.Candidate(incoming, source_filename=source_filename,
                                     source_ref=source_ref, sha256=sha256,
                                     confidence=confidence,
