@@ -220,84 +220,52 @@ def delete_organization_permanently(
         }
     )
 
-    # Primero, obtener usuarios para borrar referencias cruzadas
-    users = db.query(User).filter(User.organization_id == org_id).all()
-
-    # Eliminar tabla por tabla (respetando dependencias)
-    # Se hace por SQL directo para eficiencia
+    # Eliminar tabla por tabla, descubriendo el esquema real en vez de una
+    # lista fija (el modelo de datos crece constantemente y una lista
+    # hardcodeada queda obsoleta -> FK constraint failed al llegar al final).
     try:
-        # Tablas que referencian organization_id
-        tables_to_delete = [
-            "ai_call_logs",
-            "ai_documents",
-            "ai_conversations",
-            "alert_rules",
-            "assets",
-            "asset_groups",
-            "asset_vulnerability_evidence",
-            "audit_log",
-            "audit_programs",
-            "audit_findings",
-            "bcp_continuity_plans",
-            "bcp_recovery_plans",
-            "ccm_test_results",
-            "ccm_tests",
-            "change_requests",
-            "compliance_framework_status",
-            "control_implementations",
-            "controls",
-            "cve_scans",
-            "email_settings",
-            "evidence",
-            "evidence_attachments",
-            "external_findings",
-            "feature_flags",
-            "gdpr_dpia",
-            "gdpr_processing",
-            "incidents",
-            "integration_configs",
-            "itsm_configurations",
-            "license_audits",
-            "licenses",
-            "management_reviews",
-            "nonconformities",
-            "osint_findings",
-            "osint_identifiers",
-            "osint_scans",
-            "policies",
-            "report_schedules",
-            "reports",
-            "risk_acceptance",
-            "risk_context",
-            "risk_review_schedules",
-            "risks",
-            "soa_versions",
-            "supplier_questionnaire_responses",
-            "supplier_questionnaires",
-            "suppliers",
-            "threat_vulnerability_mapping",
-            "treatment_tasks",
-            "webhooks",
-            "webhook_events",
-        ]
+        from sqlalchemy import delete
+        from app.database import Base
 
-        # SECURITY: Use SQLAlchemy ORM for safe deletion (no string interpolation)
-        from sqlalchemy import delete, column, table as sql_table, literal_column
+        org_tables = {
+            t.name: t for t in Base.metadata.tables.values()
+            if "organization_id" in t.columns
+        }
 
-        for table_name in tables_to_delete:
-            try:
-                # Use identifier() to safely construct table reference without string interpolation
-                # This prevents SQL injection even if table_name is dynamic
-                stmt = delete(sql_table(table_name, column('organization_id'))).where(
-                    literal_column('organization_id') == org_id
-                )
-                db.execute(stmt)
-            except Exception:
-                # Ignorar errores si la tabla no existe o tiene restricciones
-                pass
+        # Algunas tablas tienen dependencias circulares entre si (p.ej.
+        # incidents <-> risks, users <-> organizations), asi que no hay un
+        # orden topologico unico valido. Se reintenta en varias pasadas:
+        # cada tabla que falla por FK se vuelve a intentar despues de que
+        # otras tablas hayan liberado sus referencias. Cada intento va en
+        # un SAVEPOINT propio para que un fallo no deshaga los borrados ya
+        # confirmados en esta misma transaccion.
+        remaining = dict(org_tables)
+        last_errors: dict[str, str] = {}
+        for _ in range(len(remaining) + 2):
+            if not remaining:
+                break
+            progressed = False
+            for table_name in list(remaining.keys()):
+                table = remaining[table_name]
+                try:
+                    with db.begin_nested():
+                        stmt = delete(table).where(table.c.organization_id == org_id)
+                        db.execute(stmt)
+                    del remaining[table_name]
+                    progressed = True
+                except Exception as e:
+                    last_errors[table_name] = str(e)
+            if not progressed:
+                break
 
-        # Finalmente, eliminar usuarios asociados
-        db.query(User).filter(User.organization_id == org_id).delete()
+        if remaining:
+            raise HTTPException(
+                500,
+                "No se pudo eliminar por dependencias sin resolver en: "
+                + ", ".join(
+                    f"{name} ({last_errors.get(name, '')})" for name in remaining
+                ),
+            )
 
         # Eliminar la organizacion misma
         db.delete(org)
@@ -318,6 +286,9 @@ def delete_organization_permanently(
             "deleted_at": datetime.now(timezone.utc).isoformat(),
         }
 
+    except HTTPException:
+        db.rollback()
+        raise
     except Exception as e:
         db.rollback()
         import logging
