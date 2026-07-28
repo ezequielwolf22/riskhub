@@ -388,6 +388,11 @@ def _migrate_columns() -> None:
         ("ALTER TABLE business_processes ADD COLUMN impact_7d INTEGER", "business_processes", "impact_7d"),
         ("ALTER TABLE business_processes ADD COLUMN bia_version VARCHAR(16)", "business_processes", "bia_version"),
         ("ALTER TABLE business_processes ADD COLUMN bia_review_date DATETIME", "business_processes", "bia_review_date"),
+        # BIA por proceso dirigido por el metodo del cliente: impactos por
+        # dimension/horizonte + impacto ponderado y banda del motor determinista.
+        ("ALTER TABLE business_processes ADD COLUMN impacts JSON", "business_processes", "impacts"),
+        ("ALTER TABLE business_processes ADD COLUMN weighted_impact REAL", "business_processes", "weighted_impact"),
+        ("ALTER TABLE business_processes ADD COLUMN impact_band VARCHAR(16)", "business_processes", "impact_band"),
         # v3.4.3 — BCPTest: frecuencia planificada + RTO/RPO real medido en ejercicio
         ("ALTER TABLE bcp_tests ADD COLUMN frequency VARCHAR(16)", "bcp_tests", "frequency"),
         ("ALTER TABLE bcp_tests ADD COLUMN rto_achieved_hours INTEGER", "bcp_tests", "rto_achieved_hours"),

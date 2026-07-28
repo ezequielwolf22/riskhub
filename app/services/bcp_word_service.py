@@ -241,10 +241,13 @@ def _section_bia(doc: Document, db: Session, org: int) -> None:
             rows.append([
                 p.name, _CRIT_LABELS.get(p.criticality, p.criticality),
                 _fmt(p.rto_hours), _fmt(p.rpo_hours), _fmt(p.mtpd_hours),
+                _fmt(getattr(p, "weighted_impact", None)),
+                _BAND_LABELS.get(getattr(p, "impact_band", None),
+                                 getattr(p, "impact_band", None) or "—"),
                 "%d%%" % bia["pct"],
             ])
         _table(doc, ["Proceso", "Criticidad", "RTO (h)", "RPO (h)",
-                     "MTPD (h)", "BIA"], rows)
+                     "MTPD (h)", "Impacto", "Banda", "BIA"], rows)
 
     # Cobertura por escenario de indisponibilidad.
     matrix = scenario_matrix(db, org)

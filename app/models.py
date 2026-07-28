@@ -2869,6 +2869,13 @@ class BusinessProcess(Base):
     bia_version = Column(String(16), nullable=True)        # Version del BIA (ej. "v1.0")
     bia_review_date = Column(DateTime, nullable=True)      # Proxima revision del BIA
     location_id = Column(Integer, ForeignKey("bcm_locations.id"), nullable=True)
+    # BIA dirigido por el metodo declarado de la organizacion (BIACriteria):
+    # impacto por dimension y horizonte {dimension: {horizonte: nivel}}. El
+    # impacto ponderado y la banda los calcula el MISMO motor determinista que
+    # los escenarios (bcm_scenario_engine.weighted_impact), nunca la vista.
+    impacts = Column(JSON, nullable=True)
+    weighted_impact = Column(Float, nullable=True)
+    impact_band = Column(String(16), nullable=True)
     # Trazabilidad de import documental
     source            = Column(String(16), default="manual")
     import_batch_id   = Column(Integer, ForeignKey("ingest_batches.id"), nullable=True)

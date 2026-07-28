@@ -123,6 +123,10 @@ def _proc_d(p: BusinessProcess) -> dict:
         "bia_version": getattr(p, "bia_version", None),
         "bia_review_date": p.bia_review_date.isoformat() if getattr(p, "bia_review_date", None) else None,
         "location_id": getattr(p, "location_id", None),
+        # BIA dirigido por el metodo del cliente
+        "impacts": getattr(p, "impacts", None),
+        "weighted_impact": getattr(p, "weighted_impact", None),
+        "impact_band": getattr(p, "impact_band", None),
         "created_at": p.created_at.isoformat() if p.created_at else None,
     }
 
@@ -303,6 +307,8 @@ class ProcessIn(BaseModel):
     impact_7d: Optional[int] = None
     bia_version: Optional[str] = None
     bia_review_date: Optional[str] = None
+    # BIA dirigido por el metodo del cliente: {dimension: {horizonte: nivel}}
+    impacts: Optional[dict] = None
 
 
 class ProcessUpdate(BaseModel):
@@ -336,6 +342,7 @@ class ProcessUpdate(BaseModel):
     impact_7d: Optional[int] = None
     bia_version: Optional[str] = None
     bia_review_date: Optional[str] = None
+    impacts: Optional[dict] = None
 
 
 class DepIn(BaseModel):
@@ -670,6 +677,10 @@ def create_process(body: ProcessIn, request: Request, db: Session = Depends(get_
     # Base legal: Art. 6(1)(f) RGPD — interés legítimo (continuidad del negocio).
     # Los datos solo deben ser de empleados de la organización.
     p = BusinessProcess(organization_id=org, **body.model_dump())
+    # BIA dirigido por el metodo del cliente: el impacto ponderado y la banda
+    # los calcula el motor determinista, nunca se aceptan del cliente.
+    from app.services.bcm_scenario_engine import get_criteria, recompute_process
+    recompute_process(p, get_criteria(db, org))
     db.add(p)
     db.commit()
     db.refresh(p)
@@ -698,6 +709,10 @@ def update_process(pid: int, body: ProcessUpdate, request: Request, db: Session 
         if k == "bia_review_date":
             v = _parse_dt(v, "bia_review_date")
         setattr(p, k, v)
+    # Recalcular impacto ponderado y banda con el metodo vigente si cambio la
+    # valoracion o el RTO (el motor decide, no la vista).
+    from app.services.bcm_scenario_engine import get_criteria, recompute_process
+    recompute_process(p, get_criteria(db, _org(u)))
     db.commit()
     # ENS op.cont.1 + ISO 27001 A.5.29 cuando BIA alcanza >= 80%
     from app.services.bcp_service import bia_completeness as _bia
@@ -3741,6 +3756,9 @@ class BIACriteriaIn(BaseModel):
     rto_scale: Optional[list] = None
     bands: Optional[list] = None
     aggregation: Optional[str] = None
+    # Combinacion impacto/RTO: "product" (impacto x factor) o "sum"
+    # (RTO + criterio = impacto total). Cambia la cifra por completo.
+    combination: Optional[str] = None
 
 
 def _scenario_d(s) -> dict:

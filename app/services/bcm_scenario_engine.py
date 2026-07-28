@@ -455,23 +455,46 @@ def recompute_assessment(assessment, criteria: dict) -> bool:
     return changed
 
 
+def recompute_process(process, criteria: dict) -> bool:
+    """Recalcula impacto ponderado y banda de un proceso. True si cambio.
+
+    El BIA por proceso usa el mismo metodo (dimensiones, baremo, bandas) que los
+    escenarios: el proceso guarda `impacts` {dimension: {horizonte: nivel}} y el
+    RTO en horas, y el motor produce la misma cifra que en pantalla.
+    """
+    result = weighted_impact(
+        getattr(process, "impacts", None), criteria,
+        rto_hours=getattr(process, "rto_hours", None),
+    )
+    has_impacts = bool(getattr(process, "impacts", None))
+    new_weighted = result["weighted_impact"] if has_impacts else None
+    new_band = result["band"] if has_impacts else None
+    changed = (process.weighted_impact != new_weighted
+               or process.impact_band != new_band)
+    process.weighted_impact = new_weighted
+    process.impact_band = new_band
+    return changed
+
+
 def recompute_org(db: Session, org_id: int) -> int:
-    """Recalcula todas las valoraciones de la organizacion.
+    """Recalcula todo el BIA de la organizacion (escenarios y procesos).
 
     Se llama tras cambiar el baremo: el metodo del cliente cambia y el BIA
     entero debe reflejarlo sin que nadie toque fila a fila.
     """
-    from app.models import BCMScenarioAssessment
+    from app.models import BCMScenarioAssessment, BusinessProcess
 
     criteria = get_criteria(db, org_id)
-    rows = db.query(BCMScenarioAssessment).filter_by(organization_id=org_id).all()
     changed = 0
-    for row in rows:
+    for row in db.query(BCMScenarioAssessment).filter_by(organization_id=org_id).all():
         if recompute_assessment(row, criteria):
+            changed += 1
+    for proc in db.query(BusinessProcess).filter_by(organization_id=org_id).all():
+        if recompute_process(proc, criteria):
             changed += 1
     if changed:
         db.commit()
-        logger.info("bcm_scenario: recalculadas %d valoraciones (org=%s)", changed, org_id)
+        logger.info("bcm_scenario: recalculadas %d filas de BIA (org=%s)", changed, org_id)
     return changed
 
 

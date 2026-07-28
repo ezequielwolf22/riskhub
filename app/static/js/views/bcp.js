@@ -756,13 +756,55 @@ const ViewBcp = (() => {
 
   // ── Tab BIA ──────────────────────────────────────────────────────────────────
 
+  // Pico de nivel de una dimension (peor horizonte) desde impacts.
+  function _biaPeak(impacts, dimKey) {
+    const byH = (impacts || {})[dimKey] || {};
+    let max = null;
+    Object.values(byH).forEach(v => {
+      if (v != null && (max === null || Number(v) > Number(max))) max = v;
+    });
+    return max;
+  }
+
+  // Vista BIA por proceso dirigida por el METODO declarado de la organizacion
+  // (BIACriteria): las dimensiones, el baremo de RTO, las bandas y la
+  // combinacion salen del metodo del cliente, no de columnas cableadas. El
+  // impacto ponderado y la banda los calcula el servidor; aqui son de solo
+  // lectura. Todo el metodo es editable (boton "Editar metodo") y transferible
+  // a cualquier organizacion.
   async function _tabBIA(el) {
-    if (!_procs.length) _procs = await Api.get('/api/bcp/processes').catch(() => []);
-    const IMPACT_LABELS = [t('bcp.impact_0'),t('bcp.impact_1'),t('bcp.impact_2'),t('bcp.impact_3')];
-    const IMPACT_COLORS = ['#6B7280','#16a34a','#D97706','#DC2626'];
-    // IMPORTANTE: construir todo el HTML antes de asignarlo para evitar que
-    // innerHTML += destruya los event listeners adjuntados previamente.
-    const bodyHtml = !_procs.length
+    const [criteria, procs] = await Promise.all([
+      Api.get('/api/bcp/bia-criteria').catch(() => null),
+      Api.get('/api/bcp/processes').catch(() => []),
+    ]);
+    _procs = procs || [];
+    _scenCriteriaCache = criteria;
+    const dims = (criteria && criteria.dimensions) || [];
+    const levels = (criteria && criteria.levels) || [];
+    const levelLabel = v => {
+      const l = levels.find(x => String(x.value) === String(v));
+      return l ? (l.label || l.value) : v;
+    };
+    const combo = criteria && (criteria.combination || 'product');
+    const comboTxt = combo === 'sum' ? t('bcp.bia_combo_sum')
+      : combo === 'formula' ? t('bcp.bia_combo_formula') : t('bcp.bia_combo_product');
+
+    const methodBanner = `
+      <div class="card" style="padding:12px 14px;margin-bottom:16px;border-left:3px solid var(--brand-purple);">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;">
+          <div>
+            <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-subtle);">${t('bcp.bia_method_title')}</div>
+            <div style="font-size:13px;margin-top:2px;">
+              ${dims.length} ${t('bcp.bia_dimensions_word')}: ${dims.map(d => UI.esc(d.label || d.key)).join(', ') || '—'}
+              ${comboTxt ? ' &middot; <span style="color:var(--text-subtle)">' + UI.esc(comboTxt) + '</span>' : ''}
+            </div>
+            ${criteria && criteria.is_default ? `<div style="font-size:11px;color:#D97706;margin-top:4px;">${t('bcp.bia_default_notice')}</div>` : ''}
+          </div>
+          <button class="btn btn-secondary btn-sm" onclick="ViewBcp._setScenSection('criteria')"><i class="ti ti-ruler-measure"></i> ${t('bcp.bia_edit_method')}</button>
+        </div>
+      </div>`;
+
+    const cardsHtml = !_procs.length
       ? `<div style="text-align:center;padding:48px 24px;">
           <i class="ti ti-chart-dots" style="font-size:48px;color:var(--text-muted);"></i>
           <h3 style="margin:16px 0 8px;">${t('bcp.no_bia_processes_title')}</h3>
@@ -772,7 +814,16 @@ const ViewBcp = (() => {
       : `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(400px,1fr));gap:16px;">
     ${_procs.map(p => {
       const pct = p.bia_pct || 0;
-      const color = pct >= 80 ? '#16a34a' : pct >= 50 ? '#D97706' : '#DC2626';
+      const pctColor = pct >= 80 ? '#16a34a' : pct >= 50 ? '#D97706' : '#DC2626';
+      const band = _scenBandInfo(criteria, p.impact_band);
+      const valued = p.impacts && Object.keys(p.impacts).length > 0;
+      const dimChips = dims.map(d => {
+        const peak = _biaPeak(p.impacts, d.key);
+        const has = peak != null;
+        const col = has ? band.color : '#6B7280';
+        return `<span style="padding:3px 8px;border-radius:12px;font-size:11px;background:${col}1f;color:${col};border:1px solid ${col}44;">
+          ${UI.esc(d.label || d.key)}: ${has ? UI.esc(String(levelLabel(peak))) : '—'}</span>`;
+      }).join('');
       return `
       <div class="card">
         <div class="card-header" style="display:flex;justify-content:space-between;align-items:center;">
@@ -780,10 +831,10 @@ const ViewBcp = (() => {
             <strong>${UI.esc(p.name)}</strong>
             <span style="color:${CRIT_COLORS[p.criticality]};font-size:12px;margin-left:8px;">${p.criticality}</span>
           </div>
-          <button class="btn btn-sm btn-secondary" onclick="ViewBcp._editProc(${p.id})">Completar BIA</button>
+          <button class="btn btn-sm btn-primary" onclick="ViewBcp._openProcBiaEditor(${p.id})"><i class="ti ti-ruler-measure"></i> ${t('bcp.bia_value_impact')}</button>
         </div>
         <div class="card-body">
-          <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:12px;text-align:center;">
+          <div style="display:grid;grid-template-columns:repeat(3,1fr) 1.3fr;gap:8px;margin-bottom:12px;text-align:center;">
             <div style="background:var(--bg-2);border-radius:6px;padding:8px;">
               <div style="font-size:16px;font-weight:700;">${p.rto_hours != null ? p.rto_hours + 'h' : '—'}</div>
               <div style="font-size:11px;color:var(--text-muted);">RTO</div>
@@ -796,30 +847,25 @@ const ViewBcp = (() => {
               <div style="font-size:16px;font-weight:700;">${p.mtpd_hours != null ? p.mtpd_hours + 'h' : '—'}</div>
               <div style="font-size:11px;color:var(--text-muted);">MTPD</div>
             </div>
-            <div style="background:var(--bg-2);border-radius:6px;padding:8px;">
-              <div style="font-size:13px;font-weight:700;">${p.mbco ? UI.esc(p.mbco.substring(0,15)) : '—'}</div>
-              <div style="font-size:11px;color:var(--text-muted);">MBCO</div>
+            <div style="background:${valued ? band.color + '14' : 'var(--bg-2)'};border-radius:6px;padding:8px;">
+              <div style="font-size:16px;font-weight:700;color:${valued ? band.color : 'var(--text-muted)'};">${valued && p.weighted_impact != null ? UI.esc(String(p.weighted_impact)) : '—'}</div>
+              <div style="font-size:11px;color:${valued ? band.color : 'var(--text-muted)'};">${valued ? UI.esc(band.label) : t('bcp.bia_not_valued')}</div>
             </div>
           </div>
           <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;">
-            ${[[t('bcp.impact_financial'), p.financial_impact], [t('bcp.impact_reputational'), p.reputational_impact],
-               [t('bcp.impact_legal'), p.legal_impact], [t('bcp.impact_operational'), p.operational_impact]].map(([lbl, val]) =>
-              `<span style="padding:3px 8px;border-radius:12px;font-size:11px;background:${IMPACT_COLORS[val??0]}22;color:${IMPACT_COLORS[val??0]};border:1px solid ${IMPACT_COLORS[val??0]}44;">
-                ${lbl}: ${IMPACT_LABELS[val??0]}
-              </span>`
-            ).join('')}
+            ${dimChips || `<span style="font-size:11px;color:var(--text-muted);">${t('bcp.bia_no_dimensions')}</span>`}
           </div>
           <div style="margin-bottom:6px;">
             <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px;">
-              <span>Completitud BIA</span><span style="color:${color};font-weight:700;">${pct}%</span>
+              <span>${t('bcp.bia_completeness')}</span><span style="color:${pctColor};font-weight:700;">${pct}%</span>
             </div>
             <div style="height:8px;background:var(--bg-3);border-radius:4px;">
-              <div style="width:${pct}%;height:100%;background:${color};border-radius:4px;transition:.3s;"></div>
+              <div style="width:${pct}%;height:100%;background:${pctColor};border-radius:4px;transition:.3s;"></div>
             </div>
           </div>
           ${(p.bia_missing||[]).length > 0 ? `
           <div style="font-size:11px;color:#DC2626;margin-top:6px;">
-            Falta: ${p.bia_missing.join(', ')}
+            ${t('bcp.bia_missing_label')}: ${p.bia_missing.join(', ')}
           </div>` : ''}
         </div>
       </div>`;
@@ -828,14 +874,120 @@ const ViewBcp = (() => {
 
     el.innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
-      <h3 style="margin:0;">${t('bcp.bia_title')} — ${_procs.length} procesos</h3>
+      <h3 style="margin:0;">${t('bcp.bia_title')} — ${_procs.length} ${t('bcp.bia_processes_word')}</h3>
       <button class="btn btn-primary" id="btn-bia-new">${t('bcp.btn_new_bia')}</button>
     </div>
-    ${bodyHtml}`;
+    ${methodBanner}
+    ${cardsHtml}`;
 
-    // listeners siempre DESPUÉS de asignar innerHTML
     document.getElementById('btn-bia-new')?.addEventListener('click', () => _openBiaPicker());
     document.getElementById('btn-bia-new2')?.addEventListener('click', () => _openBiaPicker());
+  }
+
+  // Editor de impacto de un proceso, dirigido por el metodo del cliente: rejilla
+  // dimension x horizonte identica a la de escenarios. El impacto ponderado y la
+  // banda los calcula el servidor al guardar (nunca se envian).
+  async function _openProcBiaEditor(processId) {
+    const [criteria, proc] = await Promise.all([
+      Api.get('/api/bcp/bia-criteria').catch(() => null),
+      Api.get('/api/bcp/processes/' + processId).catch(() => null),
+    ]);
+    if (!criteria) { UI.toast(t('bcp.scen_ass_no_criteria'), 'error'); return; }
+    if (!proc) { UI.toast(t('common.error'), 'error'); return; }
+
+    const dims = criteria.dimensions || [];
+    const horizons = criteria.horizons || [];
+    const levels = criteria.levels || [];
+    const impacts = proc.impacts || {};
+    const lbl = 'font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-subtle)';
+
+    let grid = '<div style="overflow-x:auto;border:0.5px solid var(--border);border-radius:var(--radius);margin-bottom:14px">'
+      + '<table class="data-table" style="font-size:12px;width:100%"><thead><tr>'
+      + '<th style="text-align:left;min-width:130px">' + UI.esc(t('bcp.scen_ass_dimension')) + '</th>'
+      + horizons.map(h => '<th style="text-align:center">' + UI.esc(h) + '</th>').join('')
+      + '</tr></thead><tbody>';
+    dims.forEach(d => {
+      grid += '<tr><td><strong>' + UI.esc(d.label || d.key) + '</strong></td>';
+      horizons.forEach(h => {
+        const cur = (impacts[d.key] || {})[h];
+        grid += '<td style="text-align:center"><select class="form-control" style="font-size:12px;padding:3px 4px"'
+          + ' data-imp-dim="' + UI.esc(d.key) + '" data-imp-h="' + UI.esc(h) + '">'
+          + '<option value="">' + UI.esc(t('bcp.scen_ass_level_none')) + '</option>'
+          + levels.map(l => '<option value="' + UI.esc(l.value) + '"'
+            + (String(cur) === String(l.value) ? ' selected' : '') + '>'
+            + UI.esc(l.value + ' — ' + (l.label || '')) + '</option>').join('')
+          + '</select></td>';
+      });
+      grid += '</tr>';
+    });
+    grid += '</tbody></table></div>';
+
+    const band = _scenBandInfo(criteria, proc.impact_band);
+    const valued = proc.impacts && Object.keys(proc.impacts).length > 0;
+    const computedHtml = valued
+      ? '<div style="display:flex;gap:18px;align-items:center;flex-wrap:wrap">'
+        + '<div><div style="font-size:10px;color:var(--text-subtle)">' + UI.esc(t('bcp.scen_ass_weighted')) + '</div>'
+        + '<div style="font-size:18px;font-weight:700">' + UI.esc(proc.weighted_impact != null ? proc.weighted_impact : '—') + '</div></div>'
+        + '<div><div style="font-size:10px;color:var(--text-subtle)">' + UI.esc(t('bcp.scen_ass_band')) + '</div>'
+        + '<div style="font-size:14px;font-weight:700;color:' + band.color + '">' + UI.esc(band.label) + '</div></div></div>'
+      : '<div style="font-size:12px;color:var(--text-subtle)">' + UI.esc(t('bcp.scen_ass_not_computed')) + '</div>';
+
+    const modal = document.createElement('div');
+    modal.className = 'modal-bg';
+    modal.innerHTML = '<div class="modal" style="max-width:760px;max-height:92vh;display:flex;flex-direction:column">'
+      + '<div class="modal-header" style="flex-shrink:0"><h2>'
+      + UI.esc(t('bcp.bia_value_impact') + ' — ' + proc.name) + '</h2>'
+      + '<button class="modal-close" onclick="this.closest(\'.modal-bg\').remove()">&#xd7;</button></div>'
+      + '<div class="modal-body" style="overflow-y:auto;flex:1;padding:20px 24px;display:block">'
+      + '<div style="' + lbl + ';margin-bottom:2px">' + UI.esc(t('bcp.scen_ass_grid_title')) + '</div>'
+      + '<div style="font-size:11px;color:var(--text-subtle);margin-bottom:8px">' + UI.esc(t('bcp.scen_ass_grid_hint')) + '</div>'
+      + grid
+      + '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:14px">'
+      + '<div><label style="' + lbl + '">RTO (h)</label>'
+      + '<input id="pbia-rto" type="number" step="any" class="form-control" style="font-size:13px" value="' + UI.esc(proc.rto_hours != null ? proc.rto_hours : '') + '"></div>'
+      + '<div><label style="' + lbl + '">RPO (h)</label>'
+      + '<input id="pbia-rpo" type="number" step="any" class="form-control" style="font-size:13px" value="' + UI.esc(proc.rpo_hours != null ? proc.rpo_hours : '') + '"></div>'
+      + '<div><label style="' + lbl + '">MTPD (h)</label>'
+      + '<input id="pbia-mtpd" type="number" step="any" class="form-control" style="font-size:13px" value="' + UI.esc(proc.mtpd_hours != null ? proc.mtpd_hours : '') + '"></div>'
+      + '</div>'
+      + '<div class="card" style="padding:12px;border-left:3px solid var(--brand-purple)">'
+      + '<div style="' + lbl + ';margin-bottom:2px">' + UI.esc(t('bcp.scen_ass_computed')) + '</div>'
+      + '<div style="font-size:11px;color:var(--text-subtle);margin-bottom:8px">' + UI.esc(t('bcp.scen_ass_computed_hint')) + '</div>'
+      + '<div>' + computedHtml + '</div></div>'
+      + '</div>'
+      + '<div class="modal-footer-sticky">'
+      + '<div style="display:flex;gap:8px;margin-left:auto">'
+      + '<button class="btn btn-sm" onclick="this.closest(\'.modal-bg\').remove()">' + UI.esc(t('common.cancel')) + '</button>'
+      + '<button class="btn btn-primary btn-sm" id="pbia-save"><i class="ti ti-check"></i> ' + UI.esc(t('common.save')) + '</button>'
+      + '</div></div></div>';
+    document.body.appendChild(modal);
+
+    modal.querySelector('#pbia-save').addEventListener('click', async () => {
+      const impactsOut = {};
+      modal.querySelectorAll('[data-imp-dim]').forEach(sel => {
+        if (!sel.value) return;
+        const d = sel.getAttribute('data-imp-dim');
+        const h = sel.getAttribute('data-imp-h');
+        if (!impactsOut[d]) impactsOut[d] = {};
+        impactsOut[d][h] = Number(sel.value);
+      });
+      const num = id => {
+        const raw = String(modal.querySelector(id).value || '').trim();
+        return raw === '' ? null : Number(raw);
+      };
+      // weighted_impact e impact_band NUNCA se envian: los calcula el servidor.
+      const payload = { impacts: impactsOut };
+      const rto = num('#pbia-rto'); if (rto != null) payload.rto_hours = rto;
+      const rpo = num('#pbia-rpo'); if (rpo != null) payload.rpo_hours = rpo;
+      const mtpd = num('#pbia-mtpd'); if (mtpd != null) payload.mtpd_hours = mtpd;
+      try {
+        await Api.patch('/api/bcp/processes/' + processId, payload);
+        modal.remove();
+        UI.toast(t('common.saved') || 'Guardado', 'success');
+        _procs = [];
+        _renderContent();
+      } catch (e) { UI.toast((e && e.message) || t('common.error'), 'error'); }
+    });
   }
 
   // ── Tab Dependencias ─────────────────────────────────────────────────────────
@@ -8413,7 +8565,7 @@ const ViewBcp = (() => {
     _setImportMode, _onFileSelect, _renderImportPreview, _confirmImport,
     _runBcpAiAnalysis,
     _toggleLocChildren, _setLocFilter, _editLocation, _modalLocation,
-    _setScenSection, _scenExplainNA, _openScenAssessment,
+    _setScenSection, _scenExplainNA, _openScenAssessment, _openProcBiaEditor,
     _scenNewScenario, _scenEditScenario, _scenToggleScenario, _scenDeleteScenario,
     _scenNewRule, _scenEditRule, _scenToggleRule, _scenDeleteRule,
     _openTestModal,
