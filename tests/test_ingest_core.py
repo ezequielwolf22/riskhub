@@ -388,3 +388,42 @@ def test_los_objetivos_de_recuperacion_ganan_por_el_mas_exigente():
         fmap = contracts.get(key).field_map()
         for fname in fields:
             assert fmap[fname].conflict_policy == "min", f"{key}.{fname}"
+
+
+# ── Lectura de documentos ────────────────────────────────────────────────────
+
+def test_pptx_con_tabla_se_lee_sin_romperse():
+    """Regresion: `_RowCollection` de python-pptx no soporta slicing.
+
+    Los packs de crisis suelen traer medios alternativos y escalado como
+    presentacion con tablas; antes cualquier PPTX con tabla tumbaba el lector.
+    """
+    import io
+
+    from pptx import Presentation
+    from pptx.util import Inches
+
+    from app.services.ingest import reader
+
+    prs = Presentation()
+    s1 = prs.slides.add_slide(prs.slide_layouts[1])
+    s1.shapes.title.text = "Escalado de crisis"
+    s1.placeholders[1].text = "Nivel alto: Comite de crisis"
+    s2 = prs.slides.add_slide(prs.slide_layouts[5])
+    s2.shapes.title.text = "Medios alternativos"
+    tbl = s2.shapes.add_table(2, 3, Inches(0.5), Inches(1.5),
+                              Inches(9), Inches(1.5)).table
+    for j, h in enumerate(["Medio", "Transicion", "Tiempo"]):
+        tbl.cell(0, j).text = h
+    tbl.cell(1, 0).text = "Trabajo remoto"
+    tbl.cell(1, 1).text = "Manual"
+    tbl.cell(1, 2).text = "120 minutos"
+    buf = io.BytesIO()
+    prs.save(buf)
+
+    doc = reader.read_document(buf.getvalue(), "crisis.pptx")
+    assert doc["format"] == "pptx"
+    tables = [b for b in doc["blocks"] if b.get("type") == "table"]
+    assert tables, "la tabla de la diapositiva deberia extraerse"
+    assert tables[0]["header"] == ["Medio", "Transicion", "Tiempo"]
+    assert ["Trabajo remoto", "Manual", "120 minutos"] in tables[0]["rows"]
