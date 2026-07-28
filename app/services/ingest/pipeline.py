@@ -133,15 +133,33 @@ def run_pack(db, org_id: Optional[int], files: list[tuple[str, bytes]], *,
         # igual que el perfil.
         method_summary = _extract_method(db, org_id, documents, bat, lang, warnings)
 
-        # ── Pasada 2 y 3: mapa por documento y volcado ───────────────────
+        # ── Pasada 2: mapa por documento (en PARALELO) ───────────────────
+        # La lectura comprensiva de cada documento es una llamada al modelo
+        # independiente de las demas: es lo que dominaba el tiempo (un pack de
+        # 15 documentos con Opus tardaba ~22 min en serie). Se lanzan en
+        # paralelo con una sesion de BD propia por hilo. El anclaje incremental
+        # al catalogo se pierde, pero la consolidacion posterior funde las
+        # variantes igual, asi que el resultado final no cambia.
+        _check_cancel(cancel_check)
+        maps_by_name = _source_maps_parallel(
+            org_id, documents, profile_data, lang, tier, use_cache)
+
+        # ── Pasada 3: volcado (en SERIE, orden original) ─────────────────
+        # La materializacion toca la BD y reconcilia contra lo ya escrito: debe
+        # ir en serie y con la sesion principal, en el orden de los documentos.
         file_reports = []
         for doc in documents:
             _check_cancel(cancel_check)
             report = {"filename": doc["filename"], "format": doc["format"]}
+            smap, build_exc = maps_by_name.get(doc["filename"], (None, None))
+            if build_exc is not None:
+                logger.warning("ingest: fallo leyendo %s: %s", doc["filename"],
+                               build_exc, exc_info=build_exc)
+                report.update({"status": "failed", "error": str(build_exc)[:300]})
+                warnings.append(f"{doc['filename']}: {build_exc}")
+                file_reports.append(report)
+                continue
             try:
-                smap = comprehension.build_source_map(
-                    db, org_id, doc, profile=profile_data, lang=lang, tier=tier,
-                    use_cache=use_cache)
                 map_row = _save_source_map(db, org_id, bat, smap)
                 report.update({
                     "doc_kind": smap.get("doc_kind"),
@@ -241,6 +259,57 @@ def run_from_store(db, org_id: Optional[int], *, user_id: Optional[int] = None,
 def _check_cancel(cancel_check) -> None:
     if cancel_check and cancel_check():
         raise PackCancelled()
+
+
+def _ingest_concurrency(n_docs: int) -> int:
+    """Hilos para la pasada 2. Acotado para respetar el rate limit del modelo
+    y la escritura serializada de SQLite. Configurable por entorno."""
+    import os
+    try:
+        want = int(os.environ.get("RISKHUB_INGEST_CONCURRENCY", "4"))
+    except (TypeError, ValueError):
+        want = 4
+    return max(1, min(want, n_docs or 1))
+
+
+def _source_maps_parallel(org_id, documents, profile_data, lang, tier,
+                          use_cache) -> dict:
+    """Computa el mapa de volcado de cada documento en paralelo.
+
+    Cada hilo usa su PROPIA sesion de BD (las sesiones de SQLAlchemy no son
+    thread-safe); el resultado es un dict plano, seguro de devolver. La
+    materializacion, que si toca la BD compartida, se queda fuera y en serie.
+    Devuelve {filename: (smap | None, exc | None)}.
+    """
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    from app.database import SessionLocal
+
+    def _one(doc):
+        tdb = SessionLocal()
+        try:
+            smap = comprehension.build_source_map(
+                tdb, org_id, doc, profile=profile_data, lang=lang, tier=tier,
+                use_cache=use_cache)
+            return doc["filename"], smap, None
+        except Exception as exc:  # se reporta por documento, no tumba el pack
+            return doc["filename"], None, exc
+        finally:
+            tdb.close()
+
+    workers = _ingest_concurrency(len(documents))
+    out: dict = {}
+    if workers == 1:
+        for doc in documents:
+            name, smap, exc = _one(doc)
+            out[name] = (smap, exc)
+        return out
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        futures = [pool.submit(_one, doc) for doc in documents]
+        for fut in as_completed(futures):
+            name, smap, exc = fut.result()
+            out[name] = (smap, exc)
+    return out
 
 
 def _finish(db, bat, summary: dict, warnings: list, status: str) -> dict:

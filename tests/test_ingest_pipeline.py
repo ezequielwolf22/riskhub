@@ -348,3 +348,19 @@ def test_la_estimacion_no_llama_a_la_ia_y_declara_lo_no_soportado():
     assert est["unsupported"] == ["diagrama.vsdx"]
     assert est["total_chars"] > 0
     assert est["estimated_cost_usd"] >= 0
+
+
+def test_un_pack_de_varios_documentos_los_vuelca_todos_en_paralelo(db):
+    """La pasada 2 corre en paralelo (una sesion de BD por hilo); todos los
+    documentos del pack deben leerse y materializarse, sin perder ninguno."""
+    data = _xlsx({"Escenarios": [["Escenario", "Sede"], ["Huelga", "Madrid"]]})
+    files = [("BIA_uno.xlsx", data), ("BIA_dos.xlsx", data),
+             ("BIA_tres.xlsx", data)]
+    with patch.object(comprehension, "build_profile", return_value=_PROFILE), \
+         patch.object(comprehension, "build_source_map", return_value=_MAP):
+        out = pipeline.run_pack(db, ORG, files)
+    assert out["status"] == "completed"
+    bat = db.get(IngestBatch, out["batch_id"])
+    reported = {f["filename"]: f["status"] for f in (bat.files or [])}
+    assert set(reported) == {"BIA_uno.xlsx", "BIA_dos.xlsx", "BIA_tres.xlsx"}
+    assert all(s == "ok" for s in reported.values())
