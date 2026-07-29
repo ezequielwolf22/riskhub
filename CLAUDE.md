@@ -140,7 +140,15 @@ Multi-usuario con roles.
 - [ ] Pruebas end-to-end manuales de las vistas nuevas con usuario real
 - [ ] Backlog del modulo Plan Director/Tratamiento: priorizado en `RISKHUB_TREATMENT_MODULE_SPEC.md` (seccion "Backlog de mejoras") — no construir hasta validar con uso real
 
-Deploy: prod (91.99.83.202) en commit ccc0264 el 2026-07-28 — el conflicto de
+Deploy: prod (91.99.83.202) el 2026-07-28 — revision UX GLOBAL de la pagina de
+ingesta: orden accion-primero (conflictos -> datos por revisar -> huecos ->
+"Que encontro" plegado por defecto como referencia -> avisos); stats de
+conflictos/dudas clicables que saltan a su seccion; conflictos lado a lado en
+rejilla con ambos documentos y su punto exacto, mas acciones en bloque
+("preferir documento X" donde difiera, "aceptar todas las automaticas");
+"Datos por revisar" con aceptacion en bloque (visibles / alta confianza /
+todos los de una entidad). Todo en local sin re-fetch (conserva scroll y
+colapsos). Deploy previo ccc0264 — el conflicto de
 la ingesta cita AMBOS documentos y su punto exacto: el materializador guarda
 procedencia por campo (documento + origen) segun escribe, asi que el valor "ya
 cargado" (que lo puso otro documento del mismo pack) se muestra con su
@@ -159,8 +167,7 @@ documentacion dinamica, consolidacion ISO 22317, arbol de dependencias, export
 a Word, BIA por proceso dirigido por el metodo del cliente, PPTX con tablas,
 pasada 2 en paralelo). Health check OK, backup pre-deploy verificado; rollback:
 `bash scripts/rollback.sh riskhub:20260728_141901`.
-**Pendiente**: revision UX global de la pagina de ingesta (el usuario la pidio
-tras estos dos arreglos puntuales). **Pendiente**: validacion end-to-end contra la API real con el pack de OFA en
+**Pendiente**: validacion end-to-end contra la API real con el pack de OFA en
 una org de prueba aislada (credito de API ya recargado). **Recordatorio para
 quien deployee**: actualizar esta nota en el mismo commit del deploy, no
 despues — asi no se repite el desfase de esta vez.

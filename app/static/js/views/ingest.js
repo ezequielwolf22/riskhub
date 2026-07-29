@@ -739,6 +739,11 @@ const ViewIngest = (() => {
       ]);
       _records = records || [];
       _conflicts = conflicts || [];
+      // Al abrir un lote: lo accionable (conflictos, dudas) abierto; "Que
+      // encontro" es material de referencia y arranca plegado. Se resetea por
+      // lote para no arrastrar el estado de otro.
+      _sectionCollapsed = { maps: true };
+      _mapCollapsed = {};
       _renderBatch();
       box.scrollIntoView({ behavior: 'smooth', block: 'start' });
     } catch (e) {
@@ -777,10 +782,12 @@ const ViewIngest = (() => {
           ${_stat(t('ingest.detail.created'), _fmtNum(_sum(s.created)))}
           ${_stat(t('ingest.detail.updated'), _fmtNum(_sum(s.updated)))}
           ${_stat(t('ingest.detail.linked'), _fmtNum(_sum(s.linked)))}
-          ${_stat(t('ingest.detail.needs_review'), _fmtNum(s.needs_review || 0),
-            Number(s.needs_review) > 0 ? 'var(--brand-orange)' : null)}
-          ${_stat(t('ingest.detail.conflicts'), _fmtNum(b.conflicts_total || s.conflicts || 0),
-            Number(b.conflicts_total || s.conflicts) > 0 ? 'var(--brand-orange)' : null)}
+          <span data-section-jump="review" style="cursor:pointer;" title="${t('ingest.nav.go_review')}">${
+            _stat(t('ingest.detail.needs_review'), _fmtNum(s.needs_review || 0),
+            Number(s.needs_review) > 0 ? 'var(--brand-orange)' : null)}</span>
+          <span data-section-jump="conflicts" style="cursor:pointer;" title="${t('ingest.nav.go_conflicts')}">${
+            _stat(t('ingest.detail.conflicts'), _fmtNum(b.conflicts_total || s.conflicts || 0),
+            Number(b.conflicts_total || s.conflicts) > 0 ? 'var(--brand-orange)' : null)}</span>
         </div>
         ${_chips(s.created)}
 
@@ -788,10 +795,10 @@ const ViewIngest = (() => {
       </div>
 
       ${_sectionNav(b, s)}
-      ${_mapsSection(b)}
-      ${_reviewSection()}
       ${_conflictsSection()}
+      ${_reviewSection()}
       ${_gapsSection(s)}
+      ${_mapsSection(b)}
       ${_issuesSection(s)}
     `;
 
@@ -844,11 +851,12 @@ const ViewIngest = (() => {
   // Indice de secciones: barra sticky para saltar entre secciones y colapsar o
   // expandir todas de una vez.
   function _sectionNav(b, s) {
+    // Orden accion-primero: lo que exige decidir va antes que la referencia.
     const items = [];
-    if ((b.source_maps || []).length) items.push(['maps', t('ingest.map.title')]);
-    if (_records.length) items.push(['review', t('ingest.review.title')]);
     items.push(['conflicts', t('ingest.conflicts.title')]);
+    if (_records.length) items.push(['review', t('ingest.review.title')]);
     items.push(['gaps', t('ingest.gaps.title')]);
+    if ((b.source_maps || []).length) items.push(['maps', t('ingest.map.title')]);
     if ((s.warnings || []).length || (s.skipped || []).length)
       items.push(['issues', t('ingest.warnings.title')]);
     if (items.length < 2) return '';
@@ -1126,17 +1134,37 @@ const ViewIngest = (() => {
     const sections = entities.map(ent => {
       const items = groups[ent];
       const collapsed = !!_reviewCollapsed[ent];
+      const entPending = items.filter(x => !_isReviewDone(x.r)).length;
       return `<div style="border:1px solid var(--border);border-radius:10px;margin-bottom:10px;overflow:hidden;">
         <div data-review-toggle="${UI.esc(ent)}" style="display:flex;justify-content:space-between;
-             align-items:center;padding:10px 14px;background:var(--bg-2);cursor:pointer;user-select:none;">
+             align-items:center;padding:10px 14px;background:var(--bg-2);cursor:pointer;user-select:none;gap:8px;">
           <div style="font-weight:700;">${UI.esc(_label('entity', ent))}
             <span class="badge badge-medium" style="margin-left:6px;">${items.length}</span></div>
-          <span style="color:var(--text-subtle);font-size:14px;">${collapsed ? '▸' : '▾'}</span>
+          <div style="display:flex;gap:8px;align-items:center;">
+            ${entPending ? `<button class="btn btn-ghost btn-xs" data-review-accept-ent="${UI.esc(ent)}"
+              onclick="event.stopPropagation()">${t('ingest.review.accept_all_entity', { n: entPending })}</button>` : ''}
+            <span style="color:var(--text-subtle);font-size:14px;">${collapsed ? '▸' : '▾'}</span>
+          </div>
         </div>
         ${collapsed ? '' : `<div style="padding:10px;display:flex;flex-direction:column;gap:8px;">
           ${items.map(x => _reviewRow(x.r, x.i)).join('')}</div>`}
       </div>`;
     }).join('');
+
+    // Acciones por lote sobre lo VISIBLE (respeta los filtros activos).
+    const visPending = filtered.filter(x => !_isReviewDone(x.r));
+    const visHighConf = visPending.filter(x => x.r.confidence == null || x.r.confidence >= 0.75);
+    const bulkBar = visPending.length ? `
+      <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:12px;
+                  padding:8px 10px;background:var(--bg-2);border-radius:8px;">
+        <span style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;
+                     color:var(--text-subtle);">${t('ingest.review.bulk')}</span>
+        <button class="btn btn-ghost btn-xs" data-review-accept-visible>${
+          t('ingest.review.accept_visible', { n: visPending.length })}</button>
+        ${visHighConf.length && visHighConf.length !== visPending.length ? `
+          <button class="btn btn-ghost btn-xs" data-review-accept-highconf>${
+            t('ingest.review.accept_highconf', { n: visHighConf.length })}</button>` : ''}
+      </div>` : '';
 
     const body = `
       <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px;">
@@ -1145,9 +1173,26 @@ const ViewIngest = (() => {
         <span style="font-size:12px;color:var(--text-subtle);">${
           t('ingest.review.count', { n: pending.length })}</span>
       </div>
+      ${bulkBar}
       ${filtered.length ? sections : `<p class="text-muted">${t('ingest.review.none_match')}</p>`}`;
     return _secCard('review', t('ingest.review.title'), t('ingest.review.hint'),
       body, pending.length || '');
+  }
+
+  // Acepta en bloque una lista de registros (indices en _records), con
+  // confirmacion, y re-renderiza una sola vez preservando el scroll.
+  async function _bulkAcceptRecords(recs, confirmMsg) {
+    const pend = recs.filter(r => r && !_isReviewDone(r));
+    if (!pend.length) return;
+    if (!confirm(confirmMsg)) return;
+    let ok = 0;
+    for (const rec of pend) {
+      try { await Api.post(`/api/ingest/records/${rec.id}/accept`, {});
+        rec._resolved = 'accepted'; ok++;
+      } catch (e) { /* se continua con el resto */ }
+    }
+    UI.toast(t('ingest.review.bulk_accepted', { n: ok }), ok ? 'success' : 'error');
+    _renderBatch();
   }
 
   function _reviewRow(r, i) {
@@ -1194,6 +1239,29 @@ const ViewIngest = (() => {
         const e = h.dataset.reviewToggle;
         _reviewCollapsed[e] = !_reviewCollapsed[e];
         _renderBatch();
+      };
+    });
+    // Registros visibles (respetando filtros) para las acciones por lote.
+    const visibleRecords = () => _records.filter(r =>
+      (_reviewFilterEntity === 'all' || r.entity === _reviewFilterEntity) &&
+      (_reviewFilterKind === 'all' || _recordKind(r) === _reviewFilterKind));
+    const av = document.querySelector('[data-review-accept-visible]');
+    if (av) av.onclick = () => {
+      const recs = visibleRecords().filter(r => !_isReviewDone(r));
+      _bulkAcceptRecords(recs, t('ingest.review.confirm_accept_n', { n: recs.length }));
+    };
+    const ah = document.querySelector('[data-review-accept-highconf]');
+    if (ah) ah.onclick = () => {
+      const recs = visibleRecords().filter(r =>
+        !_isReviewDone(r) && (r.confidence == null || r.confidence >= 0.75));
+      _bulkAcceptRecords(recs, t('ingest.review.confirm_accept_n', { n: recs.length }));
+    };
+    document.querySelectorAll('[data-review-accept-ent]').forEach(btn => {
+      btn.onclick = (ev) => {
+        ev.stopPropagation();
+        const ent = btn.dataset.reviewAcceptEnt;
+        const recs = _records.filter(r => r.entity === ent && !_isReviewDone(r));
+        _bulkAcceptRecords(recs, t('ingest.review.confirm_accept_n', { n: recs.length }));
       };
     });
     document.querySelectorAll('[data-revert]').forEach(btn => {
@@ -1278,9 +1346,34 @@ const ViewIngest = (() => {
   // ---------- 6. Conflictos ----------
 
   function _conflictsSection() {
-    const body = _conflicts.length
-      ? _conflicts.map((c, i) => _conflictCard(c, i)).join('')
-      : `<p class="text-muted">${t('ingest.conflicts.empty')}</p>`;
+    let body;
+    if (!_conflicts.length) {
+      body = `<p class="text-muted">${t('ingest.conflicts.empty')}</p>`;
+    } else {
+      // Documentos que aparecen como candidatos: permiten "preferir" uno en
+      // bloque cuando el mismo documento gana en varios conflictos.
+      const docs = {};
+      _conflicts.forEach(c => (c.candidates || []).forEach(cand => {
+        if (cand.source_filename) docs[cand.source_filename] = (docs[cand.source_filename] || 0) + 1;
+      }));
+      const docNames = Object.keys(docs).sort();
+      const docBtns = docNames.map(d =>
+        `<button class="btn btn-ghost btn-xs" data-cf-prefer="${UI.esc(d)}">
+           ${t('ingest.conflicts.prefer_doc', { doc: UI.esc(d) })}
+           <span class="badge badge-muted" style="margin-left:4px;">${docs[d]}</span></button>`).join('');
+      const anyUnresolved = _conflicts.some(c => c.status !== 'user_resolved');
+      const bar = (docNames.length > 1 || anyUnresolved)
+        ? `<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:14px;
+                 padding:8px 10px;background:var(--bg-2);border-radius:8px;">
+             <span style="font-size:11px;font-weight:700;text-transform:uppercase;
+                          letter-spacing:.06em;color:var(--text-subtle);">${t('ingest.conflicts.bulk')}</span>
+             ${docNames.length > 1 ? docBtns : ''}
+             <span style="flex:1;"></span>
+             ${anyUnresolved ? `<button class="btn btn-ghost btn-xs" data-cf-accept-all>${
+               t('ingest.conflicts.accept_all_auto')}</button>` : ''}
+           </div>` : '';
+      body = bar + _conflicts.map((c, i) => _conflictCard(c, i)).join('');
+    }
     return _secCard('conflicts', t('ingest.conflicts.title'), t('ingest.conflicts.hint'),
       body, _conflicts.length || '');
   }
@@ -1291,36 +1384,34 @@ const ViewIngest = (() => {
     const resolved = c.status === 'user_resolved';
     // Que dato es, en cristiano: "el RTO del proceso Facturación".
     const what = `${_fieldLabel(c.field_name)} · ${UI.esc(_label('entity', c.entity))}`;
+    const cardsHtml = cands.map((cand, ci) => {
+      const isChosen = JSON.stringify(cand.value) === chosen;
+      const src = cand.source_filename
+        ? t('ingest.conflicts.from_doc', { doc: UI.esc(cand.source_filename) })
+        : `<em>${t('ingest.conflicts.pre_existing')}</em>`;
+      const ref = cand.source_ref
+        ? `<div style="margin-top:2px;"><span class="mono" style="font-size:11px;">${UI.esc(String(cand.source_ref))}</span></div>` : '';
+      return `<div style="border:1px solid ${isChosen ? 'var(--brand-purple)' : 'var(--border)'};
+                  ${isChosen ? 'background:var(--brand-purple-4,rgba(89,0,141,.05));' : ''}
+                  border-radius:8px;padding:12px;display:flex;flex-direction:column;gap:8px;">
+        <div style="font-size:18px;font-weight:700;word-break:break-word;">${UI.esc(_val(cand.value))}
+          ${isChosen ? `<span class="badge badge-purple" style="margin-left:6px;font-size:10px;">
+            ${t('ingest.conflicts.in_use')}</span>` : ''}</div>
+        <div style="font-size:12px;color:var(--text-muted);">${src}${ref}</div>
+        ${isChosen
+          ? `<span style="font-size:11px;color:var(--text-subtle);margin-top:auto;">${t('ingest.conflicts.current_choice')}</span>`
+          : `<button class="btn btn-secondary btn-sm" data-cf="${idx}" data-cand="${ci}"
+               style="margin-top:auto;">${t('ingest.conflicts.use_this')}</button>`}
+      </div>`;
+    }).join('');
     return `
       <div style="border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:12px;">
         <div style="font-size:14px;font-weight:700;">${what}</div>
         <p style="font-size:13px;color:var(--text-muted);margin:6px 0 12px;">
           ${t('ingest.conflicts.explain')}</p>
-
-        <div style="display:flex;flex-direction:column;gap:8px;">
-          ${cands.map((cand, ci) => {
-            const isChosen = JSON.stringify(cand.value) === chosen;
-            return `<div style="display:flex;justify-content:space-between;align-items:center;
-                        gap:12px;padding:10px 12px;border-radius:8px;
-                        border:1px solid ${isChosen ? 'var(--brand-purple)' : 'var(--border)'};
-                        ${isChosen ? 'background:var(--brand-purple-4,rgba(89,0,141,.05));' : ''}">
-              <div style="min-width:0;">
-                <div style="font-size:15px;font-weight:700;">${UI.esc(_val(cand.value))}
-                  ${isChosen ? `<span class="badge badge-purple" style="margin-left:6px;">
-                    ${t('ingest.conflicts.in_use')}</span>` : ''}</div>
-                <div style="font-size:12px;color:var(--text-muted);margin-top:2px;">
-                  ${cand.source_filename
-                    ? `${t('ingest.conflicts.from_doc', { doc: UI.esc(cand.source_filename) })}${
-                        cand.source_ref ? ` · <span class="mono">${UI.esc(String(cand.source_ref))}</span>` : ''}`
-                    : `<em>${t('ingest.conflicts.pre_existing')}</em>${
-                        cand.source_ref ? ` · <span class="mono">${UI.esc(String(cand.source_ref))}</span>` : ''}`}</div>
-              </div>
-              ${isChosen ? '' : `<button class="btn btn-ghost btn-sm" data-cf="${idx}" data-cand="${ci}"
-                style="flex-shrink:0;">${t('ingest.conflicts.use_this')}</button>`}
-            </div>`;
-          }).join('')}
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:10px;">
+          ${cardsHtml}
         </div>
-
         <div style="display:flex;gap:8px;align-items:flex-end;margin-top:12px;flex-wrap:wrap;">
           <div style="flex:1 1 220px;">
             <label style="font-size:12px;" for="ing-cf-custom-${idx}">${t('ingest.conflicts.custom_value')}</label>
@@ -1356,6 +1447,48 @@ const ViewIngest = (() => {
         _resolveConflict(c, (raw !== '' && isFinite(num)) ? num : raw, btn);
       };
     });
+    // Preferir un documento en bloque: donde ese documento aporta un candidato
+    // distinto al valor en uso, se adopta el suyo.
+    document.querySelectorAll('[data-cf-prefer]').forEach(btn => {
+      btn.onclick = () => {
+        const doc = btn.dataset.cfPrefer;
+        const items = [];
+        _conflicts.forEach(c => {
+          const cand = (c.candidates || []).find(x => x.source_filename === doc);
+          if (cand && JSON.stringify(cand.value) !== JSON.stringify(c.resolved_value)) {
+            items.push({ conflict: c, value: cand.value });
+          }
+        });
+        if (!items.length) { UI.toast(t('ingest.conflicts.nothing_to_change'), 'info'); return; }
+        _bulkResolveConflicts(items,
+          t('ingest.conflicts.confirm_prefer', { doc, n: items.length }), btn);
+      };
+    });
+    const acceptAll = document.querySelector('[data-cf-accept-all]');
+    if (acceptAll) acceptAll.onclick = () => {
+      const items = _conflicts
+        .filter(c => c.status !== 'user_resolved')
+        .map(c => ({ conflict: c, value: c.resolved_value }));
+      if (!items.length) return;
+      _bulkResolveConflicts(items,
+        t('ingest.conflicts.confirm_accept_all', { n: items.length }), acceptAll);
+    };
+  }
+
+  async function _bulkResolveConflicts(items, confirmMsg, btn) {
+    if (!confirm(confirmMsg)) return;
+    if (btn) btn.disabled = true;
+    let ok = 0;
+    for (const { conflict, value } of items) {
+      try {
+        await Api.post(`/api/ingest/conflicts/${conflict.id}/resolve`, { value });
+        conflict.resolved_value = value; conflict.status = 'user_resolved';
+        ok++;
+      } catch (e) { /* se continua con el resto; se informa al final */ }
+    }
+    _loadOverrides();
+    UI.toast(t('ingest.conflicts.bulk_done', { n: ok }), ok ? 'success' : 'error');
+    _renderBatch();
   }
 
   async function _resolveConflict(conflict, value, btn) {
