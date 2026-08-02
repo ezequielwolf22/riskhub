@@ -207,6 +207,45 @@ class TestQuestionnaireReuse:
         assert (full.json().get("answers") or {}).get("mfa") == "yes"
 
 
+class TestAiAssistants:
+    def test_gaps_endpoint_deterministic(self, client, auth_headers):
+        s = _create_supplier(client, auth_headers, name="Gappy Vendor",
+                            processes_personal_data=True)
+        resp = client.get(f"/api/suppliers/{s['id']}/gaps", headers=auth_headers)
+        assert resp.status_code == 200, resp.text
+        g = resp.json()
+        assert "missing_data" in g and "missing_agreements" in g
+        # trata datos personales sin DPA -> acuerdo faltante
+        assert any("DPA" in x for x in g["missing_agreements"])
+        # sin clasificar -> datos faltantes
+        assert any("negocio" in x.lower() for x in g["missing_data"])
+
+    def test_ai_classify_advisory(self, client, auth_headers, monkeypatch):
+        # Mock del cliente de IA: no llama a la API real
+        import app.services.tprm_ai_assistants_service as ai
+        monkeypatch.setattr(
+            "app.routers.suppliers._resolve_ai",
+            lambda db, u, lang: ("test-key", "test-model"),
+        )
+        monkeypatch.setattr(ai, "_call_ai", lambda *a, **k: {
+            "business_importance_level": "important",
+            "security_risk_level": "high",
+            "review_frequency": "annual",
+            "required_assessments": ["ISO 27001", "GDPR/DPA"],
+            "rationale": "Procesa datos personales con acceso SaaS.",
+            "confidence": 0.8,
+        })
+        s = _create_supplier(client, auth_headers, name="AI Vendor")
+        resp = client.post(f"/api/suppliers/{s['id']}/ai-classify", headers=auth_headers)
+        assert resp.status_code == 200, resp.text
+        r = resp.json()
+        assert r["advisory"] is True
+        assert r["security_risk_level"] == "high"
+        # no se aplica automaticamente: el proveedor sigue sin clasificar
+        cur = client.get(f"/api/suppliers/{s['id']}", headers=auth_headers)
+        assert cur.json()["security_risk_level"] is None
+
+
 class TestImportEnhancements:
     def test_import_new_fields(self, client, auth_headers):
         csv = (

@@ -456,6 +456,79 @@ def _log_supplier_change_events(db: Session, s: Supplier, before: dict,
         )
 
 
+def _resolve_ai(db, current_user, lang):
+    """Devuelve (api_key, model) o lanza 400 si no hay clave configurada."""
+    from app.models import AiConfig
+    from app.routers.ai_config import resolve_api_key
+    cfg = db.query(AiConfig).filter(AiConfig.organization_id == current_user.organization_id).first()
+    key = resolve_api_key(cfg)
+    if not key:
+        raise HTTPException(400, _t("suppliers.api_key_missing", lang))
+    model = (cfg.model if cfg else None) or "claude-opus-4-6"
+    return key, model
+
+
+@router.post("/{supplier_id}/ai-classify")
+def ai_classify_supplier(supplier_id: int, request: Request,
+                         db: Session = Depends(get_db),
+                         current_user: User = Depends(require_analyst)):
+    """Asistente IA de clasificacion (punto 14). Advisory: Seguridad aprueba."""
+    lang = get_lang(request)
+    s = db.query(Supplier).filter(Supplier.id == supplier_id).first()
+    if not s or not check_org_access(s.organization_id, current_user):
+        raise HTTPException(404, _t("suppliers.not_found", lang))
+    key, model = _resolve_ai(db, current_user, lang)
+    from app.services import tprm_ai_assistants_service as ai
+    result = ai.suggest_classification(db, s, key, model, lang=lang)
+    log_action(db, current_user.id, "ai_classify", "supplier", str(s.id))
+    return result
+
+
+@router.post("/{supplier_id}/ai-analyze")
+def ai_analyze_supplier(supplier_id: int, request: Request,
+                        db: Session = Depends(get_db),
+                        current_user: User = Depends(require_analyst)):
+    """Asistente IA de analisis del proveedor (punto 14): huecos + acciones."""
+    lang = get_lang(request)
+    s = db.query(Supplier).filter(Supplier.id == supplier_id).first()
+    if not s or not check_org_access(s.organization_id, current_user):
+        raise HTTPException(404, _t("suppliers.not_found", lang))
+    key, model = _resolve_ai(db, current_user, lang)
+    from app.services import tprm_ai_assistants_service as ai
+    result = ai.analyze_supplier(db, s, key, model, lang=lang)
+    log_action(db, current_user.id, "ai_analyze", "supplier", str(s.id))
+    return result
+
+
+@router.post("/{supplier_id}/ai-review-assistant")
+def ai_review_assistant(supplier_id: int, request: Request,
+                        db: Session = Depends(get_db),
+                        current_user: User = Depends(require_analyst)):
+    """Asistente IA de revision (punto 14): sintesis del historial + recomendaciones."""
+    lang = get_lang(request)
+    s = db.query(Supplier).filter(Supplier.id == supplier_id).first()
+    if not s or not check_org_access(s.organization_id, current_user):
+        raise HTTPException(404, _t("suppliers.not_found", lang))
+    key, model = _resolve_ai(db, current_user, lang)
+    from app.services import tprm_ai_assistants_service as ai
+    result = ai.review_assistant(db, s, key, model, lang=lang)
+    log_action(db, current_user.id, "ai_review_assistant", "supplier", str(s.id))
+    return result
+
+
+@router.get("/{supplier_id}/gaps")
+def supplier_gaps(supplier_id: int, request: Request,
+                  db: Session = Depends(get_db),
+                  current_user: User = Depends(get_current_user)):
+    """Huecos deterministas del proveedor (sin IA): datos/acuerdos/evaluaciones/revisiones."""
+    lang = get_lang(request)
+    s = db.query(Supplier).filter(Supplier.id == supplier_id).first()
+    if not s or not check_org_access(s.organization_id, current_user):
+        raise HTTPException(404, _t("suppliers.not_found", lang))
+    from app.services.tprm_ai_assistants_service import compute_gaps
+    return compute_gaps(db, s)
+
+
 @router.get("/{supplier_id}/events")
 def list_supplier_events(supplier_id: int, request: Request,
                          db: Session = Depends(get_db),

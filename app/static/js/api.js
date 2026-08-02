@@ -278,6 +278,10 @@ const Api = {
     analyzeDocument: (supplierId, docId) => Api.post(`/api/suppliers/${supplierId}/documents/${docId}/analyze`, {}),
     events: (id) => Api.get(`/api/suppliers/${id}/events`),
     addEvent: (id, d) => Api.post(`/api/suppliers/${id}/events`, d),
+    gaps: (id) => Api.get(`/api/suppliers/${id}/gaps`),
+    aiClassify: (id) => Api.post(`/api/suppliers/${id}/ai-classify`, {}),
+    aiAnalyze: (id) => Api.post(`/api/suppliers/${id}/ai-analyze`, {}),
+    aiReviewAssistant: (id) => Api.post(`/api/suppliers/${id}/ai-review-assistant`, {}),
   },
   nonconformities: {
     list: (q) => Api.get('/api/nonconformities/', q),

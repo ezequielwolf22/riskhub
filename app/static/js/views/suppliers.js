@@ -464,6 +464,7 @@ const ViewSuppliers = (() => {
           <td>
             ${canEdit ? `<button class="btn btn-sm" data-id="${s.id}" data-action="recompute" title="Recalcular tier y riesgo">Recalcular</button>` : ''}
             <button class="btn btn-sm" data-id="${s.id}" data-action="edit">Editar</button>
+            ${canEdit ? `<button class="btn btn-sm" data-id="${s.id}" data-action="ai" title="Asistente IA (clasificar, analizar, revisar)">IA</button>` : ''}
             <button class="btn btn-sm" data-id="${s.id}" data-name="${UI.esc(s.name)}" data-action="history" title="Historial de cambios">Historial</button>
             ${canEdit ? `<button class="btn btn-sm btn-danger" data-id="${s.id}" data-action="del">${t('common.delete')}</button>` : ''}
           </td>
@@ -571,6 +572,96 @@ const ViewSuppliers = (() => {
         }
       };
     });
+    wrap.querySelectorAll('[data-action="ai"]').forEach(btn => {
+      btn.onclick = () => {
+        const sup = data.find(s => s.id == btn.dataset.id);
+        if (sup) _openAiAssistant(sup);
+      };
+    });
+  }
+
+  function _aiListHtml(title, items) {
+    if (!items || !items.length) return '';
+    return `<div style="margin-top:8px;"><strong style="font-size:12px;color:var(--brand-purple);">${title}</strong>
+      <ul style="margin:4px 0 0 16px;font-size:13px;">${items.map(i => `<li>${UI.esc(typeof i === 'string' ? i : JSON.stringify(i))}</li>`).join('')}</ul></div>`;
+  }
+
+  function _openAiAssistant(s) {
+    UI.modal(`Asistente IA — ${UI.esc(s.name)}`, `
+      <div class="span2">
+        <p style="font-size:12px;color:var(--text-muted);margin-bottom:10px;">La IA propone; Seguridad mantiene la decisión final. Nada se aplica automáticamente.</p>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">
+          <button class="btn btn-sm btn-primary" id="ai-classify">Sugerir clasificación</button>
+          <button class="btn btn-sm" id="ai-analyze">Analizar proveedor</button>
+          <button class="btn btn-sm" id="ai-review">Resumen de revisión</button>
+        </div>
+        <div id="ai-out" style="min-height:60px;"></div>
+      </div>
+    `, { actions: `<button class="btn" onclick="UI.closeModal()">Cerrar</button>`, width: 'min(96vw, 720px)' });
+
+    const out = document.getElementById('ai-out');
+    const busy = () => { out.innerHTML = '<p class="text-muted" style="font-size:13px;">Consultando IA…</p>'; };
+
+    document.getElementById('ai-classify').onclick = async () => {
+      busy();
+      try {
+        const r = await Api.suppliers.aiClassify(s.id);
+        out.innerHTML = `
+          <div style="background:var(--bg-2);border:1px solid var(--border);border-radius:6px;padding:10px;">
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:13px;">
+              <div><b>Importancia negocio:</b> ${_enumBadge(BIZ_IMPORTANCE, r.business_importance_level)}</div>
+              <div><b>Riesgo seguridad:</b> ${_enumBadge(SEC_RISK, r.security_risk_level)}</div>
+              <div><b>Frecuencia revisión:</b> ${UI.esc(REVIEW_FREQ[r.review_frequency] || r.review_frequency || '—')}</div>
+              <div><b>Confianza:</b> ${Math.round((r.confidence || 0) * 100)}%</div>
+            </div>
+            ${_aiListHtml('Evaluaciones sugeridas', r.required_assessments)}
+            <div style="margin-top:8px;font-size:13px;"><b>Justificación:</b> ${UI.esc(r.rationale || '')}</div>
+            <button class="btn btn-sm btn-primary" id="ai-apply" style="margin-top:10px;">Aplicar sugerencia (aprobar)</button>
+          </div>`;
+        document.getElementById('ai-apply').onclick = async () => {
+          try {
+            await Api.suppliers.update(s.id, {
+              business_importance_level: r.business_importance_level,
+              security_risk_level: r.security_risk_level,
+              review_frequency: r.review_frequency,
+            });
+            UI.toast('Clasificación aplicada', 'success');
+            UI.closeModal();
+            await _refresh();
+          } catch (e) { UI.toast(e.message, 'error'); }
+        };
+      } catch (e) { out.innerHTML = `<div class="notice">${UI.esc(e.message)}</div>`; }
+    };
+
+    document.getElementById('ai-analyze').onclick = async () => {
+      busy();
+      try {
+        const r = await Api.suppliers.aiAnalyze(s.id);
+        out.innerHTML = `
+          <div style="background:var(--bg-2);border:1px solid var(--border);border-radius:6px;padding:10px;font-size:13px;">
+            <div><b>Resumen:</b> ${UI.esc(r.summary || '')}</div>
+            ${_aiListHtml('Datos faltantes', r.missing_data)}
+            ${_aiListHtml('Acuerdos faltantes', r.missing_agreements)}
+            ${_aiListHtml('Evaluaciones faltantes', r.missing_assessments)}
+            ${_aiListHtml('Revisiones', r.overdue_reviews)}
+            ${_aiListHtml('Acciones recomendadas', r.recommended_actions)}
+          </div>`;
+      } catch (e) { out.innerHTML = `<div class="notice">${UI.esc(e.message)}</div>`; }
+    };
+
+    document.getElementById('ai-review').onclick = async () => {
+      busy();
+      try {
+        const r = await Api.suppliers.aiReviewAssistant(s.id);
+        out.innerHTML = `
+          <div style="background:var(--bg-2);border:1px solid var(--border);border-radius:6px;padding:10px;font-size:13px;">
+            <div><b>Resumen de revisión:</b> ${UI.esc(r.review_summary || '')}</div>
+            <div style="margin-top:6px;"><b>Postura:</b> ${UI.esc(r.overall_posture || '—')}</div>
+            ${_aiListHtml('Acciones sugeridas', r.suggested_actions)}
+            ${_aiListHtml('Recomendaciones de reevaluación', r.reassessment_recommendations)}
+          </div>`;
+      } catch (e) { out.innerHTML = `<div class="notice">${UI.esc(e.message)}</div>`; }
+    };
   }
 
   function _formHtml(s) {
