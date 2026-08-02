@@ -1683,10 +1683,11 @@ const ViewBcp = (() => {
   // ── Modales — Proceso ────────────────────────────────────────────────────────
 
   async function _openProcModal(proc, isBia) {
-    let users = [], locFlat = [];
+    let users = [], locFlat = [], allProcs = [];
     try {
-      [users] = await Promise.all([
+      [users, allProcs] = await Promise.all([
         Api.get('/api/users/').catch(() => []),
+        Api.get('/api/bcp/processes').catch(() => []),
       ]);
       // Flatten location map for select
       (function flatten(nodes) {
@@ -1759,6 +1760,18 @@ const ViewBcp = (() => {
               ${locFlat.map(l => `<option value="${l.id}"${(proc?.location_id === l.id || (!proc && _locationFilter === l.id)) ? ' selected' : ''}>${'&nbsp;'.repeat((l.depth || 0) * 2)}${UI.esc(l.name)}</option>`).join('')}
             </select>
           </div>
+          <div>
+            <label style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;color:var(--text-subtle);padding-left:1px;">${t('bcp.field_business_unit')}</label>
+            <input id="pm-bu" class="form-control" style="font-size:13px;" value="${UI.esc(proc?.business_unit||'')}" placeholder="${t('bcp.field_business_unit_ph')}">
+          </div>
+        </div>
+        <div style="margin-bottom:14px;">
+          <label style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;color:var(--text-subtle);padding-left:1px;">${t('bcp.field_parent_process')}</label>
+          <div style="font-size:10px;color:var(--text-subtle);margin:2px 0 4px;">${t('bcp.field_parent_process_hint')}</div>
+          <select id="pm-parent" class="form-control" style="font-size:13px;">
+            <option value="">${t('bcp.no_parent_option')}</option>
+            ${allProcs.filter(x => !proc || x.id !== proc.id).map(x => `<option value="${x.id}"${proc?.parent_process_id === x.id ? ' selected' : ''}>${UI.esc(x.name)}</option>`).join('')}
+          </select>
         </div>
 
         ${proc ? (() => {
@@ -2048,6 +2061,8 @@ const ViewBcp = (() => {
       bia_version: g('pm-biaver')?.value || null,
       bia_review_date: g('pm-biarev')?.value || null,
       location_id: parseInt(g('pm-location')?.value) || null,
+      business_unit: (g('pm-bu')?.value || '').trim() || null,
+      parent_process_id: parseInt(g('pm-parent')?.value) || null,
     };
     if (!body.name) { UI.toast(t('bcp.proc_name_required'), 'error'); return; }
     try {
@@ -6043,11 +6058,236 @@ const ViewBcp = (() => {
     }
   }
 
+  // ── Mapa de continuidad (jerarquia real) ─────────────────────────────────────
+  // Sede(anidada) -> Unidad de negocio -> Proceso -> Subproceso -> Dependencias,
+  // con RTO efectivo (propagado desde la dependencia critica mas lenta),
+  // hallazgos de coherencia y procedencia. Todo lo calcula el servidor.
+
+  let _cmapData = null;
+  let _cmapCollapsed = {};   // claves de nodos plegados (loc:/unit:/proc:)
+  let _cmapDepsOpen = {};    // dependencias de un proceso: abiertas (por defecto cerradas)
+
+  const _CMAP_CRIT = { critical: 'Crítico', high: 'Alto', medium: 'Medio', low: 'Bajo' };
+  const _CMAP_BAND = {
+    critical: { c: '#DC2626', l: 'Crítico' }, severe: { c: '#EA580C', l: 'Severo' },
+    relevant: { c: '#ca8a04', l: 'Relevante' }, trivial: { c: '#16a34a', l: 'Trivial' },
+    none: { c: '#6B7280', l: 'Sin impacto' },
+  };
+  const _CMAP_SEV = { high: '#DC2626', medium: '#EA580C', low: '#ca8a04' };
+
+  async function _tabContinuityMap(body) {
+    body.innerHTML = '<div class="card"><p class="text-muted">' + t('common.loading') + '</p></div>';
+    try {
+      _cmapData = await Api.get('/api/bcp/continuity-map');
+    } catch (e) {
+      body.innerHTML = '<div class="notice notice-error">' + UI.esc((e && e.message) || String(e)) + '</div>';
+      return;
+    }
+    _cmapRender(body);
+  }
+
+  function _cmapRto(n) {
+    const dh = n.declared_rto, eh = n.effective_rto;
+    if (dh == null && eh == null) return '<span style="color:var(--text-subtle)">RTO —</span>';
+    if (n.rto_gap) {
+      return '<span title="RTO declarado vs efectivo (limitado por su dependencia critica mas lenta)">'
+        + 'RTO <s style="color:var(--text-subtle)">' + _cmapH(dh) + '</s> '
+        + '<b style="color:#EA580C">' + _cmapH(eh) + '</b></span>';
+    }
+    return 'RTO <b>' + _cmapH(dh != null ? dh : eh) + '</b>';
+  }
+  function _cmapH(v) { return v == null ? '—' : (Number.isInteger(v) ? v : v) + 'h'; }
+
+  function _cmapProvenance(n) {
+    let out = '';
+    if (n.source === 'imported') out += '<span class="badge badge-orange" style="font-size:9px">importado</span> ';
+    if (n.needs_review) out += '<span class="badge badge-danger" style="font-size:9px">revisar</span> ';
+    if (n.import_confidence != null)
+      out += '<span class="badge badge-muted" style="font-size:9px">conf. ' + Math.round(n.import_confidence * 100) + '%</span> ';
+    return out;
+  }
+
+  function _cmapFindings(n) {
+    const f = n.findings || [];
+    if (!f.length) return '';
+    return '<div style="margin:6px 0 2px 4px;display:flex;flex-direction:column;gap:4px">'
+      + f.map(x => '<div style="font-size:11px;display:flex;gap:6px;align-items:flex-start">'
+        + '<i class="ti ti-alert-triangle" style="color:' + (_CMAP_SEV[x.severity] || '#ca8a04') + ';font-size:13px;flex-shrink:0;margin-top:1px"></i>'
+        + '<span>' + UI.esc(x.message) + '</span></div>').join('')
+      + '</div>';
+  }
+
+  function _cmapDeps(n) {
+    const groups = n.dependencies || {};
+    const types = Object.keys(groups);
+    if (!types.length) return '';
+    const key = 'proc:' + n.id;
+    const open = !!_cmapDepsOpen[key];
+    const total = n.dep_count || 0;
+    let html = '<div style="margin:4px 0 2px 4px">'
+      + '<button class="btn btn-ghost btn-xs" data-cmap-deps="' + n.id + '">'
+      + (open ? '▾' : '▸') + ' ' + total + ' dependencia(s)</button>';
+    if (open) {
+      types.forEach(ty => {
+        const icon = DEP_ICONS[ty] || 'ti-circle';
+        const label = DEP_LABELS[ty] || ty;
+        html += '<div style="margin:4px 0 2px 10px;font-size:11px">'
+          + '<i class="ti ' + icon + '" style="margin-right:4px;color:var(--text-subtle)"></i><b>' + UI.esc(label) + '</b>';
+        html += '<div style="margin-left:16px">' + groups[ty].map(d =>
+          '<div style="display:flex;gap:6px;align-items:center;padding:1px 0">'
+          + (d.is_critical ? '<span class="badge badge-danger" style="font-size:9px">crítica</span> ' : '')
+          + '<span>' + UI.esc(d.name || (d.depends_on_process || '—')) + '</span>'
+          + (d.depends_on_process ? '<span style="color:var(--text-subtle)">→ ' + UI.esc(d.depends_on_process) + '</span>' : '')
+          + (d.rto_hours != null ? '<span style="color:var(--text-subtle)">· RTO ' + _cmapH(d.rto_hours) + '</span>' : '')
+          + (d.recovery_sequence != null ? '<span class="badge badge-muted" style="font-size:9px">orden ' + d.recovery_sequence + '</span>' : '')
+          + '</div>').join('') + '</div></div>';
+      });
+    }
+    return html + '</div>';
+  }
+
+  function _cmapProc(n, depth) {
+    const key = 'proc:' + n.id;
+    const collapsed = !!_cmapCollapsed[key];
+    const hasKids = (n.children || []).length > 0;
+    const critC = CRIT_COLORS[n.criticality] || '#6B7280';
+    const band = _CMAP_BAND[n.impact_band] || null;
+    const fCount = n.findings_subtree || 0;
+    const pad = 8 + depth * 18;
+    let html = '<div style="border-left:2px solid ' + critC + '33;margin:3px 0 3px ' + pad + 'px;padding:6px 8px;background:var(--bg-1);border-radius:0 8px 8px 0">'
+      + '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">'
+      + (hasKids
+        ? '<button class="btn btn-ghost btn-xs" data-cmap-toggle="' + key + '" style="padding:0 4px">' + (collapsed ? '▸' : '▾') + '</button>'
+        : '<span style="width:18px;display:inline-block"></span>')
+      + '<span style="width:8px;height:8px;border-radius:50%;background:' + critC + ';flex-shrink:0"></span>'
+      + '<b style="font-size:13px">' + UI.esc(n.name) + '</b>'
+      + '<span class="badge" style="font-size:9px;background:' + critC + '1f;color:' + critC + '">' + (_CMAP_CRIT[n.criticality] || n.criticality) + '</span>'
+      + '<span style="font-size:11px;color:var(--text-muted)">' + _cmapRto(n) + '</span>'
+      + (band ? '<span class="badge" style="font-size:9px;background:' + band.c + '1f;color:' + band.c + '">' + band.l + '</span>' : '')
+      + (n.bia_pct != null ? '<span style="font-size:11px;color:var(--text-subtle)">BIA ' + n.bia_pct + '%</span>' : '')
+      + ' ' + _cmapProvenance(n)
+      + (fCount ? '<span class="badge badge-danger" style="font-size:9px" title="Hallazgos de coherencia en este proceso y sus subprocesos">' + fCount + ' aviso(s)</span>' : '')
+      + '<button class="btn btn-ghost btn-xs" data-cmap-edit="' + n.id + '" style="margin-left:auto"><i class="ti ti-edit"></i></button>'
+      + '</div>'
+      + _cmapFindings(n)
+      + _cmapDeps(n);
+    if (!collapsed) {
+      (n.children || []).forEach(c => { html += _cmapProc(c, depth + 1); });
+    }
+    html += '</div>';
+    return html;
+  }
+
+  function _cmapUnit(u, depth) {
+    const procs = u.processes || [];
+    if (!procs.length) return '';
+    const pad = 8 + depth * 18;
+    let html = '';
+    if (u.business_unit) {
+      html += '<div style="margin:6px 0 2px ' + pad + 'px;font-size:11px;font-weight:700;'
+        + 'text-transform:uppercase;letter-spacing:.05em;color:var(--text-subtle)">'
+        + '<i class="ti ti-building-community" style="margin-right:4px"></i>' + UI.esc(u.business_unit)
+        + ' <span class="badge badge-muted" style="font-size:9px">' + u.process_count + '</span></div>';
+    }
+    procs.forEach(p => { html += _cmapProc(p, depth + 1); });
+    return html;
+  }
+
+  function _cmapLoc(loc, depth) {
+    const key = 'loc:' + loc.id;
+    const collapsed = !!_cmapCollapsed[key];
+    const pad = depth * 14;
+    let html = '<div style="margin:8px 0 0 ' + pad + 'px">'
+      + '<div style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:var(--bg-2);border-radius:8px;cursor:pointer" data-cmap-toggle="' + key + '">'
+      + '<span>' + (collapsed ? '▸' : '▾') + '</span>'
+      + '<i class="ti ti-map-pin" style="color:var(--brand-purple)"></i>'
+      + '<b>' + UI.esc(loc.name) + '</b>'
+      + (loc.city || loc.country ? '<span style="font-size:11px;color:var(--text-subtle)">' + UI.esc([loc.city, loc.country].filter(Boolean).join(', ')) + '</span>' : '')
+      + '<span class="badge badge-muted" style="font-size:10px">' + loc.process_count + ' proceso(s)</span>'
+      + (loc.findings ? '<span class="badge badge-danger" style="font-size:10px">' + loc.findings + ' aviso(s)</span>' : '')
+      + '</div>';
+    if (!collapsed) {
+      (loc.units || []).forEach(u => { html += _cmapUnit(u, depth); });
+      (loc.sublocations || []).forEach(s => { html += _cmapLoc(s, depth + 1); });
+    }
+    html += '</div>';
+    return html;
+  }
+
+  function _cmapSetAll(collapse) {
+    _cmapCollapsed = {};
+    if (!collapse) return;
+    const mark = (loc) => {
+      _cmapCollapsed['loc:' + loc.id] = 1;
+      (loc.sublocations || []).forEach(mark);
+    };
+    (_cmapData.locations || []).forEach(mark);
+  }
+
+  function _cmapRender(body) {
+    const d = _cmapData;
+    if (!d) return;
+    const keepY = window.scrollY;
+    const tot = d.totals || {};
+    const empty = !(d.locations || []).length && !(d.unassigned || []).length;
+    let html = '<div class="card">'
+      + '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:12px">'
+      + '<div><h3 style="margin:0">' + t('bcp.tile_map') + '</h3>'
+      + '<p style="margin:2px 0 0;font-size:12px;color:var(--text-subtle)">' + t('bcp.map_hint') + '</p></div>'
+      + '<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">'
+      + '<span style="font-size:12px;color:var(--text-subtle)">' + (tot.locations || 0) + ' sedes · '
+      + (tot.processes || 0) + ' procesos · ' + (tot.dependencies || 0) + ' dependencias</span>'
+      + (d.findings_total ? '<span class="badge badge-danger">' + d.findings_total + ' avisos de coherencia</span>' : '<span class="badge badge-low">sin avisos</span>')
+      + '<button class="btn btn-ghost btn-xs" data-cmap-all="expand">Expandir todo</button>'
+      + '<button class="btn btn-ghost btn-xs" data-cmap-all="collapse">Colapsar todo</button>'
+      + '</div></div>';
+    if (empty) {
+      html += '<div style="text-align:center;padding:32px;color:var(--text-muted)">'
+        + '<i class="ti ti-sitemap" style="font-size:40px"></i>'
+        + '<p style="margin-top:10px">' + t('bcp.map_empty') + '</p></div>';
+    } else {
+      (d.locations || []).forEach(loc => { html += _cmapLoc(loc, 0); });
+      const un = d.unassigned || [];
+      const unProcs = un.reduce((a, u) => a + (u.processes || []).length, 0);
+      if (unProcs) {
+        html += '<div style="margin-top:12px;padding:8px 10px;background:var(--bg-2);border-radius:8px">'
+          + '<b><i class="ti ti-help-circle" style="margin-right:4px;color:#EA580C"></i>Procesos sin sede asignada</b>'
+          + '<span class="badge badge-muted" style="margin-left:6px;font-size:10px">' + unProcs + '</span></div>';
+        un.forEach(u => { html += _cmapUnit(u, 0); });
+      }
+    }
+    html += '</div>';
+    body.innerHTML = html;
+    window.scrollTo(0, keepY);
+
+    body.querySelectorAll('[data-cmap-toggle]').forEach(el => {
+      el.onclick = () => {
+        const k = el.dataset.cmapToggle;
+        if (_cmapCollapsed[k]) delete _cmapCollapsed[k]; else _cmapCollapsed[k] = 1;
+        _cmapRender(body);
+      };
+    });
+    body.querySelectorAll('[data-cmap-deps]').forEach(el => {
+      el.onclick = () => {
+        const k = 'proc:' + el.dataset.cmapDeps;
+        if (_cmapDepsOpen[k]) delete _cmapDepsOpen[k]; else _cmapDepsOpen[k] = 1;
+        _cmapRender(body);
+      };
+    });
+    body.querySelectorAll('[data-cmap-all]').forEach(b => {
+      b.onclick = () => { _cmapSetAll(b.dataset.cmapAll === 'collapse'); _cmapRender(body); };
+    });
+    body.querySelectorAll('[data-cmap-edit]').forEach(b => {
+      b.onclick = (ev) => { ev.stopPropagation(); _editProc(Number(b.dataset.cmapEdit)); };
+    });
+  }
+
   // ── Operar mode: tiles ────────────────────────────────────────────────────────
 
   async function _renderOperarMode(content) {
     const tiles = [
       { id:'dashboard',     label:t('bcp.tile_dashboard'), icon:'ti-chart-dots-3',   color:'var(--primary)',   sub:t('bcp.tile_dashboard_sub') },
+      { id:'map',           label:t('bcp.tile_map'),     icon:'ti-sitemap',        color:'#59008D',          sub:t('bcp.tile_map_sub') },
       { id:'graph',         label:t('bcp.tile_graph'),   icon:'ti-topology-full',  color:'#D65200',          sub:t('bcp.tile_graph_sub') },
       { id:'tests',         label:t('bcp.tile_tests'),  icon:'ti-clipboard-check',color:'#16a34a',          sub:t('bcp.tile_tests_sub') },
       { id:'alertas',       label:t('bcp.tile_alerts'),   icon:'ti-bell-ringing',   color:'#2563EB',          sub:t('bcp.tile_alerts_sub') },
@@ -6055,7 +6295,7 @@ const ViewBcp = (() => {
     ];
     // Badge de activación activa
     const activeAct = await Api.get('/api/bcp/activations').catch(() => []).then(list => list.find(a => !a.closed_at));
-    let tilesHtml = '<div class="bcm-tiles-grid" style="grid-template-columns:repeat(5,1fr)">';
+    let tilesHtml = '<div class="bcm-tiles-grid" style="grid-template-columns:repeat(6,1fr)">';
     tiles.forEach(t => {
       const activeCls = _currentTile === t.id ? ' active' : '';
       const isActTile = t.id === 'activaciones';
@@ -6076,6 +6316,7 @@ const ViewBcp = (() => {
     const body = content.querySelector('#bcm-tile-body');
     switch (_currentTile) {
       case 'dashboard':    await _tileDashboard(body); break;
+      case 'map':          await _tabContinuityMap(body); break;
       case 'graph':        await _tabGraph(body); break;
       case 'tests':        await _stepTests(body); break;
       case 'alertas':      await _stepAlertas(body); break;

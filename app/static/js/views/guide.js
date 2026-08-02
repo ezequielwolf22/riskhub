@@ -2800,6 +2800,11 @@ const ViewGuide = {
     ${this._p('Muestra el estado global del SGCN con 23 cláusulas ISO 22301:2019. Cada cláusula tiene estado <em>implementado / parcial / gap</em>, detalle y referencia normativa. El porcentaje global indica madurez del sistema. Usa el boton <strong>Analizar gaps con IA</strong> para obtener un informe ejecutivo con referencias a ISO 22301, ISO 27001 A.5.29/A.5.30, ENS y NIS2.')}
     ${this._warn('<strong>Atención:</strong> El boton "Analizar con IA" consume tokens de la API de Claude. Solo usarlo manualmente cuando necesites el informe de auditor.')}
 
+    ${this._h('Mapa de continuidad (jerarquía real)')}
+    ${this._p('El tile <strong>Mapa de continuidad</strong> muestra la jerarquía real del BCP como un árbol colapsable: <strong>Sede</strong> (anidada por sede padre) → <strong>Unidad de negocio</strong> → <strong>Proceso</strong> → <strong>Subproceso</strong> → <strong>Dependencias</strong>. Cada proceso indica su criticidad, RTO, banda de impacto, % BIA y procedencia (importado / revisar / confianza).')}
+    ${this._p('Dos cosas clave para la <strong>precisión</strong>: (1) el <strong>RTO efectivo</strong> — un proceso no se recupera antes que su dependencia crítica más lenta, así que si su RTO declarado es 4h pero necesita un sistema con RTO 24h, se muestra <s>4h</s> <strong>24h</strong>; (2) los <strong>avisos de coherencia</strong> — contradicciones que delatan datos imprecisos (RTO&gt;MTPD, subproceso más exigente que su padre, dependencia crítica más lenta que el proceso, crítico sin estrategia/plan/prueba, proceso sin sede). Todo lo calcula el motor determinista del servidor, nunca la vista ni un LLM.')}
+    ${this._tip('La jerarquía se construye asignando a cada proceso su <strong>sede</strong>, su <strong>unidad de negocio</strong> y, si procede, su <strong>proceso padre</strong> en el formulario del proceso. La ingesta documental también la puebla.')}
+
     ${this._h('Tab Procesos Críticos')}
     ${this._p('Tabla de todos los procesos con criticidad, RTO/RPO/MTPD, % BIA completado y conteo de dependencias. Usa el buscador y el filtro de criticidad para navegar en organizaciones con muchos procesos. Haz clic en <strong>Editar</strong> para abrir el formulario completo con 6 secciones:')}
     <ul style="font-size:13px;padding-left:20px;margin:0 0 14px;">

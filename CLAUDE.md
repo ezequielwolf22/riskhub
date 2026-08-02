@@ -140,7 +140,20 @@ Multi-usuario con roles.
 - [ ] Pruebas end-to-end manuales de las vistas nuevas con usuario real
 - [ ] Backlog del modulo Plan Director/Tratamiento: priorizado en `RISKHUB_TREATMENT_MODULE_SPEC.md` (seccion "Backlog de mejoras") — no construir hasta validar con uso real
 
-Deploy: prod (91.99.83.202) el 2026-07-28 — revision UX GLOBAL de la pagina de
+Deploy: prod (91.99.83.202) el 2026-08-02 — Fase 1 del rework del BCP
+(jerarquia real + precision, pedido por el usuario que no veia la jerarquia de
+procesos/dependencias). BusinessProcess gana `parent_process_id` (macro-proceso
+-> proceso -> actividad) y `business_unit`; `location_id` ya se asigna al
+crear/editar (faltaba en el schema). Nuevo `bcp_hierarchy_service` +
+`GET /api/bcp/continuity-map`: arbol Sede(anidada) -> Unidad -> Proceso ->
+Subproceso -> Dependencias, con RTO EFECTIVO propagado (un proceso no se
+recupera antes que su dependencia critica mas lenta) y hallazgos de coherencia
+(RTO>MTPD, subproceso mas exigente que el padre, dependencia critica mas lenta
+que el proceso, critico sin estrategia/plan/prueba, sin sede) + procedencia por
+nodo. Nuevo tile "Mapa de continuidad" en el hub BCP; formulario de proceso con
+sede/unidad/proceso-padre. Guarda anti-ciclo. Tests test_bcp_continuity_map.py.
+Pendiente de este rework: Fase 2 (grafo de dependencias con propagacion) y
+Fase 3 (panel unico por proceso). Deploy previo 2026-07-28 — revision UX GLOBAL de la pagina de
 ingesta: orden accion-primero (conflictos -> datos por revisar -> huecos ->
 "Que encontro" plegado por defecto como referencia -> avisos); stats de
 conflictos/dudas clicables que saltan a su seccion; conflictos lado a lado en
