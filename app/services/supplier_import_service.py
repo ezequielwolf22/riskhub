@@ -38,7 +38,80 @@ _FIELD_ALIASES = {
     "annual_spend": ["grand total", "total", "gasto anual", "annual spend", "spend",
                      "facturacion", "facturación", "importe", "monto anual"],
     "category2": [],
+    # v6.7.0 — Suppliers Module Review (punto 13)
+    "business_importance_level": ["business importance", "importancia negocio",
+                                  "importancia de negocio", "business_importance",
+                                  "importancia"],
+    "security_risk_level": ["security risk", "riesgo seguridad", "riesgo de seguridad",
+                            "security_risk", "security risk level"],
+    "operating_region": ["operating region", "region", "región", "region operativa",
+                         "región operativa", "operating_region", "zona"],
+    "review_frequency": ["review frequency", "frecuencia revision",
+                         "frecuencia de revisión", "review_frequency", "frecuencia"],
+    "next_review_date": ["next review date", "next review", "proxima revision",
+                        "próxima revisión", "next_review_date", "fecha revision"],
+    "security_status": ["security status", "estado seguridad", "estado de seguridad",
+                       "security_status", "supplier status", "estado proveedor",
+                       "estado del proveedor"],
+    "agreement_status": ["agreement status", "estado acuerdo", "estado del acuerdo",
+                        "agreement_status", "contract status", "estado contrato"],
+    "owner_email": ["owner", "owner email", "propietario", "responsable interno",
+                   "owner_email", "dueño"],
+    "backup_owner_email": ["backup owner", "backup", "backup_owner", "backup owner email",
+                          "propietario suplente", "responsable suplente"],
 }
+
+
+# Mapas de normalizacion de etiquetas ES/EN a los valores canonicos
+_BUSINESS_IMPORTANCE_MAP = {
+    "not relevant": "not_relevant", "no relevante": "not_relevant", "not_relevant": "not_relevant",
+    "normal": "normal",
+    "important": "important", "importante": "important",
+    "critical": "critical", "critico": "critical", "crítico": "critical",
+}
+_SECURITY_RISK_MAP = {
+    "very low": "very_low", "muy bajo": "very_low", "very_low": "very_low",
+    "low": "low", "bajo": "low",
+    "medium": "medium", "medio": "medium", "moderado": "medium",
+    "high": "high", "alto": "high",
+    "critical": "critical", "critico": "critical", "crítico": "critical",
+}
+_REVIEW_FREQUENCY_MAP = {
+    "monthly": "monthly", "mensual": "monthly",
+    "quarterly": "quarterly", "trimestral": "quarterly",
+    "semiannual": "semiannual", "semestral": "semiannual", "biannual": "semiannual",
+    "annual": "annual", "anual": "annual", "yearly": "annual",
+    "biennial": "biennial", "bienal": "biennial",
+    "none": "none", "ninguna": "none",
+}
+_AGREEMENT_STATUS_MAP = {
+    "none": "none", "ninguno": "none", "sin acuerdo": "none",
+    "draft": "draft", "borrador": "draft",
+    "pending signature": "pending_signature", "pendiente firma": "pending_signature",
+    "pending_signature": "pending_signature",
+    "signed": "signed", "firmado": "signed",
+    "expired": "expired", "expirado": "expired", "vencido": "expired",
+}
+
+
+def _map_value(raw: Optional[str], table: dict) -> Optional[str]:
+    if not raw:
+        return None
+    return table.get(_normalize(raw))
+
+
+def _parse_date(raw: Optional[str]):
+    """Parseo tolerante de fechas de revision (ISO, dd/mm/yyyy, dd-mm-yyyy)."""
+    if not raw:
+        return None
+    from datetime import datetime
+    raw = str(raw).strip().split(" ")[0]
+    for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y", "%m/%d/%Y", "%Y/%m/%d"):
+        try:
+            return datetime.strptime(raw, fmt)
+        except (ValueError, TypeError):
+            continue
+    return None
 
 
 def _normalize(s: str) -> str:
@@ -116,6 +189,14 @@ def import_suppliers(content: bytes, filename: str, org_id: int, db: Session, la
         for s in db.query(Supplier.name).filter(Supplier.organization_id == org_id)
     }
 
+    # Mapa email -> user_id para resolver owner / backup owner (punto 13)
+    from app.models import User
+    user_by_email = {
+        _normalize(u.email): u.id
+        for u in db.query(User.id, User.email).filter(User.organization_id == org_id)
+        if u.email
+    }
+
     created, skipped, errors = 0, 0, []
     seen_in_file = set()
 
@@ -151,7 +232,25 @@ def import_suppliers(content: bytes, filename: str, org_id: int, db: Session, la
                 country_code=(_cell(row, header_map.get("country_code")) or "")[:2] or None,
                 tax_id=_cell(row, header_map.get("tax_id")),
                 annual_spend=annual_spend,
+                # v6.7.0 — Suppliers Module Review (punto 13)
+                business_importance_level=_map_value(
+                    _cell(row, header_map.get("business_importance_level")), _BUSINESS_IMPORTANCE_MAP),
+                security_risk_level=_map_value(
+                    _cell(row, header_map.get("security_risk_level")), _SECURITY_RISK_MAP),
+                operating_region=_cell(row, header_map.get("operating_region")),
+                review_frequency=_map_value(
+                    _cell(row, header_map.get("review_frequency")), _REVIEW_FREQUENCY_MAP),
+                next_assessment_at=_parse_date(_cell(row, header_map.get("next_review_date"))),
+                agreement_status=_map_value(
+                    _cell(row, header_map.get("agreement_status")), _AGREEMENT_STATUS_MAP),
+                owner_id=user_by_email.get(_normalize(_cell(row, header_map.get("owner_email")) or "")),
+                backup_owner_id=user_by_email.get(_normalize(_cell(row, header_map.get("backup_owner_email")) or "")),
             )
+            # security_status: acepta valor canonico directo si es valido
+            _sec_status = _normalize(_cell(row, header_map.get("security_status")) or "").replace(" ", "_")
+            from app.services.tprm_classification import SECURITY_STATUSES
+            if _sec_status in SECURITY_STATUSES:
+                supplier.security_status = _sec_status
             db.add(supplier)
             db.flush()  # asignar id para el scoring
             supplier.code = f"SUP-{supplier.id:04d}"

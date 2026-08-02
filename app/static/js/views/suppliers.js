@@ -35,6 +35,66 @@ const ViewSuppliers = (() => {
     return `<span style="display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:600;background:${color};color:#fff;">${UI.esc(label)}</span>`;
   }
 
+  // ── Suppliers Module Review: clasificaciones del cliente (puntos 2/5/6/18) ──
+  // Etiquetas en es-ES inline (consistente con el resto de la vista; i18n en punto 16).
+  const BIZ_IMPORTANCE = {
+    not_relevant: { label: 'No relevante', color: '#94a3b8' },
+    normal:       { label: 'Normal',       color: '#3b82f6' },
+    important:    { label: 'Importante',   color: '#f59e0b' },
+    critical:     { label: 'Crítico',      color: '#dc2626' },
+  };
+  const SEC_RISK = {
+    very_low: { label: 'Muy bajo', color: '#16a34a' },
+    low:      { label: 'Bajo',     color: '#65a30d' },
+    medium:   { label: 'Medio',    color: '#f59e0b' },
+    high:     { label: 'Alto',     color: '#ea580c' },
+    critical: { label: 'Crítico',  color: '#dc2626' },
+  };
+  const REVIEW_FREQ = {
+    monthly: 'Mensual', quarterly: 'Trimestral', semiannual: 'Semestral',
+    annual: 'Anual', biennial: 'Bienal', none: 'Sin revisión',
+  };
+  const REVIEW_STATUS = {
+    active:         { label: 'Activo',            color: '#16a34a' },
+    review_due_90:  { label: 'Revisión en 90 días', color: '#3b82f6' },
+    review_due_60:  { label: 'Revisión en 60 días', color: '#f59e0b' },
+    review_due_30:  { label: 'Revisión en 30 días', color: '#ea580c' },
+    under_review:   { label: 'En revisión',       color: '#8b5cf6' },
+    review_overdue: { label: 'Revisión vencida',  color: '#dc2626' },
+  };
+  const SEC_STATUS = {
+    draft:                             { label: 'Borrador',                    color: '#94a3b8' },
+    pending_supplier_response:         { label: 'Pendiente respuesta proveedor', color: '#3b82f6' },
+    pending_security_review:           { label: 'Pendiente revisión seguridad',  color: '#8b5cf6' },
+    pending_additional_info:           { label: 'Pendiente info adicional',      color: '#f59e0b' },
+    security_approved:                 { label: 'Aprobado por seguridad',        color: '#16a34a' },
+    security_approved_with_mitigation: { label: 'Aprobado con mitigación',       color: '#65a30d' },
+    risk_accepted:                     { label: 'Riesgo aceptado',               color: '#0891b2' },
+    rejected:                          { label: 'Rechazado',                     color: '#dc2626' },
+    offboarded:                        { label: 'Dado de baja',                  color: '#64748b' },
+  };
+  const AGREEMENT_STATUS = {
+    none: 'Sin acuerdo', draft: 'Borrador', pending_signature: 'Pendiente firma',
+    signed: 'Firmado', expired: 'Expirado',
+  };
+  const NEXT_ACTION = {
+    internal: { label: 'Nosotros', color: '#8b5cf6' },
+    supplier: { label: 'Proveedor', color: '#3b82f6' },
+    security: { label: 'Seguridad', color: '#ea580c' },
+    none:     { label: '—', color: '#94a3b8' },
+  };
+
+  function _enumBadge(map, code) {
+    const e = map[code];
+    if (!e) return '<span style="color:var(--text-muted);">-</span>';
+    return _badge(e.label, e.color);
+  }
+  function _selOptions(map, selected) {
+    return `<option value="">- Sin definir -</option>` + Object.entries(map).map(([k, val]) =>
+      `<option value="${k}" ${selected === k ? 'selected' : ''}>${UI.esc(val.label || val)}</option>`
+    ).join('');
+  }
+
   // ── Dashboard editable ────────────────────────────────────────────────────
   function _SUP_WIDGETS() {
     return [
@@ -201,6 +261,21 @@ const ViewSuppliers = (() => {
               <option value="terminated">${window.t('suppliers.lifecycle_terminated')}</option>
             </select>
           </div>
+          <div><label style="font-size:12px;">Importancia de negocio</label>
+            <select id="f-adv-biz-imp" class="input"><option value="">Cualquiera</option>${Object.entries(BIZ_IMPORTANCE).map(([k, v]) => `<option value="${k}">${v.label}</option>`).join('')}</select>
+          </div>
+          <div><label style="font-size:12px;">Riesgo de seguridad</label>
+            <select id="f-adv-sec-risk" class="input"><option value="">Cualquiera</option>${Object.entries(SEC_RISK).map(([k, v]) => `<option value="${k}">${v.label}</option>`).join('')}</select>
+          </div>
+          <div><label style="font-size:12px;">Estado de seguridad</label>
+            <select id="f-adv-sec-status" class="input"><option value="">Cualquiera</option>${Object.entries(SEC_STATUS).map(([k, v]) => `<option value="${k}">${v.label}</option>`).join('')}</select>
+          </div>
+          <div><label style="font-size:12px;">Estado de revisión</label>
+            <select id="f-adv-review-status" class="input"><option value="">Cualquiera</option>${Object.entries(REVIEW_STATUS).map(([k, v]) => `<option value="${k}">${v.label}</option>`).join('')}</select>
+          </div>
+          <div><label style="font-size:12px;">Región operativa</label>
+            <select id="f-adv-region" class="input"><option value="">Cualquiera</option></select>
+          </div>
         </div>
         <div style="margin-top:8px;display:flex;gap:8px;">
           <button id="btn-adv-apply" class="btn btn-sm btn-primary">${window.t('suppliers.filter_apply')}</button>
@@ -223,12 +298,22 @@ const ViewSuppliers = (() => {
     };
     document.getElementById('btn-adv-apply').onclick = _refresh;
     document.getElementById('btn-adv-clear').onclick = () => {
-      ['f-adv-location','f-adv-dept','f-adv-imp','f-adv-rel'].forEach(id => {
+      ['f-adv-location','f-adv-dept','f-adv-imp','f-adv-rel','f-adv-biz-imp',
+       'f-adv-sec-risk','f-adv-sec-status','f-adv-review-status','f-adv-region'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.value = '';
       });
       _refresh();
     };
+    // Poblar el select de region con la config del modulo (punto 4)
+    Api.tprm.getSettings().then(cfg => {
+      const sel = document.getElementById('f-adv-region');
+      if (sel && cfg.operating_regions) {
+        cfg.operating_regions.forEach(r => {
+          const o = document.createElement('option'); o.value = r; o.textContent = r; sel.appendChild(o);
+        });
+      }
+    }).catch(() => {});
     await _refresh();
   }
 
@@ -270,6 +355,11 @@ const ViewSuppliers = (() => {
     const advDept = document.getElementById('f-adv-dept')?.value.trim().toLowerCase() || '';
     const advImp = document.getElementById('f-adv-imp')?.value || '';
     const advRel = document.getElementById('f-adv-rel')?.value || '';
+    const advBizImp = document.getElementById('f-adv-biz-imp')?.value || '';
+    const advSecRisk = document.getElementById('f-adv-sec-risk')?.value || '';
+    const advSecStatus = document.getElementById('f-adv-sec-status')?.value || '';
+    const advReviewStatus = document.getElementById('f-adv-review-status')?.value || '';
+    const advRegion = document.getElementById('f-adv-region')?.value || '';
     const wrap = document.getElementById('sup-table-wrap');
     if (!wrap) return;
     wrap.innerHTML = '<p class="text-muted">Cargando...</p>';
@@ -277,6 +367,11 @@ const ViewSuppliers = (() => {
       const params = {};
       if (riskLevel) params.risk_level = riskLevel;
       if (q) params.q = q;
+      if (advBizImp) params.business_importance_level = advBizImp;
+      if (advSecRisk) params.security_risk_level = advSecRisk;
+      if (advSecStatus) params.security_status = advSecStatus;
+      if (advReviewStatus) params.review_status = advReviewStatus;
+      if (advRegion) params.operating_region = advRegion;
       let data = await Api.suppliers.list(params);
       if (criticalFilter === '1') data = data.filter(s => s.is_critical);
       else if (criticalFilter === '0') data = data.filter(s => !s.is_critical);
@@ -339,6 +434,13 @@ const ViewSuppliers = (() => {
       const critBadge = s.is_critical
         ? `<span style="display:inline-block;padding:2px 7px;border-radius:999px;font-size:10px;font-weight:700;background:#DC2626;color:#fff;">CRÍTICO</span>`
         : `<span style="display:inline-block;padding:2px 7px;border-radius:999px;font-size:10px;font-weight:600;background:var(--bg-2);color:var(--text-muted);border:1px solid var(--border);">Normal</span>`;
+      const bizImp = s.business_importance_level ? _enumBadge(BIZ_IMPORTANCE, s.business_importance_level) : '<span style="color:var(--text-muted);">-</span>';
+      const secRisk = s.security_risk_level ? _enumBadge(SEC_RISK, s.security_risk_level) : '<span style="color:var(--text-muted);">-</span>';
+      const secStatus = s.security_status ? _enumBadge(SEC_STATUS, s.security_status) : '<span style="color:var(--text-muted);">-</span>';
+      const nextAction = (s.next_action_owner && s.next_action_owner !== 'none' && NEXT_ACTION[s.next_action_owner])
+        ? `<div style="font-size:9px;color:var(--text-muted);margin-top:2px;">→ ${NEXT_ACTION[s.next_action_owner].label}</div>` : '';
+      const revBadge = (s.review_status && s.review_status !== 'active' && REVIEW_STATUS[s.review_status])
+        ? `<div style="margin-top:3px;">${_badge(REVIEW_STATUS[s.review_status].label, REVIEW_STATUS[s.review_status].color)}</div>` : '';
       return `
         <tr>
           <td style="width:36px;text-align:center;">
@@ -348,11 +450,14 @@ const ViewSuppliers = (() => {
           <td><b>${UI.esc(s.code)}</b></td>
           <td><span data-id="${s.id}" data-action="file" style="cursor:pointer;color:var(--brand-purple);font-weight:600;">${UI.esc(s.name)}</span></td>
           <td>${critBadge}</td>
+          <td>${bizImp}</td>
+          <td>${secRisk}</td>
+          <td>${secStatus}${nextAction}</td>
           <td>${tier}</td>
           <td style="text-align:center;font-weight:700;">${inh}</td>
           <td style="text-align:center;font-weight:700;">${res}</td>
           <td>${assessed}</td>
-          <td>${next}</td>
+          <td>${next}${revBadge}</td>
           <td>
             ${canEdit ? `<button class="btn btn-sm" data-id="${s.id}" data-action="recompute" title="Recalcular tier y riesgo">Recalcular</button>` : ''}
             <button class="btn btn-sm" data-id="${s.id}" data-action="edit">Editar</button>
@@ -382,8 +487,8 @@ const ViewSuppliers = (() => {
                 style="width:15px;height:15px;cursor:pointer;accent-color:var(--brand-purple);"
                 title="Seleccionar todo">
             </th>
-            <th>Código</th><th>Nombre</th><th>Tag</th><th>Tier</th><th>Inherent</th><th>Residual</th>
-            <th>Ult. evaluación</th><th>Prox. evaluación</th><th>Acciones</th>
+            <th>Código</th><th>Nombre</th><th>Tag</th><th>Imp. negocio</th><th>Riesgo seg.</th><th>Estado seg.</th><th>Tier</th><th>Inherent</th><th>Residual</th>
+            <th>Ult. evaluación</th><th>Prox. revisión</th><th>Acciones</th>
           </tr>
         </thead>
         <tbody>${rows}</tbody>
@@ -515,6 +620,33 @@ const ViewSuppliers = (() => {
           </div>
         </div>
 
+        <!-- Gobierno y seguridad (Suppliers Module Review) -->
+        <div style="grid-column:1/-1;margin-top:4px;border-top:1px solid var(--border);padding-top:8px;">
+          <strong style="font-size:13px;color:var(--brand-purple);">Gobierno y seguridad</strong>
+          <span style="font-size:11px;color:var(--text-muted);margin-left:8px;">Importancia de negocio y riesgo de seguridad son clasificaciones independientes.</span>
+        </div>
+        <div><label>Importancia de negocio</label>
+          <select id="f-biz-imp-level" class="input">${_selOptions(BIZ_IMPORTANCE, v.business_importance_level)}</select>
+        </div>
+        <div><label>Riesgo de seguridad</label>
+          <select id="f-sec-risk" class="input">${_selOptions(SEC_RISK, v.security_risk_level)}</select>
+        </div>
+        <div><label>Región operativa</label>
+          <select id="f-op-region" class="input"><option value="">- Sin definir -</option>${v.operating_region ? `<option value="${UI.esc(v.operating_region)}" selected>${UI.esc(v.operating_region)}</option>` : ''}</select>
+        </div>
+        <div><label>Estado de seguridad</label>
+          <select id="f-sec-status" class="input">${_selOptions(SEC_STATUS, v.security_status)}</select>
+        </div>
+        <div><label>Frecuencia de revisión</label>
+          <select id="f-review-freq" class="input"><option value="">- Sin definir -</option>${Object.entries(REVIEW_FREQ).map(([k, l]) => `<option value="${k}" ${v.review_frequency === k ? 'selected' : ''}>${l}</option>`).join('')}</select>
+        </div>
+        <div><label>Estado del acuerdo</label>
+          <select id="f-agreement" class="input"><option value="">- Sin definir -</option>${Object.entries(AGREEMENT_STATUS).map(([k, l]) => `<option value="${k}" ${v.agreement_status === k ? 'selected' : ''}>${l}</option>`).join('')}</select>
+        </div>
+        <div><label>Owner (responsable)</label><select id="f-owner" class="input"><option value="">- Sin asignar -</option></select></div>
+        <div><label>Backup Owner (suplente)</label><select id="f-backup-owner" class="input"><option value="">- Sin asignar -</option></select></div>
+        <div></div>
+
         <!-- Notas -->
         <div style="grid-column:1/-1;"><label>Notas / descripción</label><textarea id="f-notes" class="input" rows="2">${UI.esc(v.notes || '')}</textarea></div>
 
@@ -608,15 +740,32 @@ const ViewSuppliers = (() => {
     document.getElementById('sup-add-sla').onclick = _addSlaRow;
     _renderContactList();
     document.getElementById('sup-add-contact').onclick = _addContactRow;
-    // Poblar select de responsable interno
+    // Poblar selects de responsables (interno, owner, backup owner)
     Api.users.list().then(users => {
-      const sel = document.getElementById('f-internal-owner');
-      if (!sel) return;
-      users.forEach(u => {
+      const fill = (elId, selectedId) => {
+        const sel = document.getElementById(elId);
+        if (!sel) return;
+        users.forEach(u => {
+          const opt = document.createElement('option');
+          opt.value = u.id;
+          opt.textContent = u.full_name || u.email;
+          if (s && u.id === selectedId) opt.selected = true;
+          sel.appendChild(opt);
+        });
+      };
+      fill('f-internal-owner', s?.internal_owner_id);
+      fill('f-owner', s?.owner_id);
+      fill('f-backup-owner', s?.backup_owner_id);
+    }).catch(() => {});
+    // Poblar regiones operativas configurables (punto 4)
+    Api.tprm.getSettings().then(cfg => {
+      const sel = document.getElementById('f-op-region');
+      if (!sel || !cfg.operating_regions) return;
+      const cur = s?.operating_region || '';
+      cfg.operating_regions.forEach(r => {
+        if (r === cur) return; // ya insertado como selected
         const opt = document.createElement('option');
-        opt.value = u.id;
-        opt.textContent = u.full_name || u.email;
-        if (s && u.id === s.internal_owner_id) opt.selected = true;
+        opt.value = r; opt.textContent = r;
         sel.appendChild(opt);
       });
     }).catch(() => {});
@@ -2052,6 +2201,15 @@ const ViewSuppliers = (() => {
         description: sl.description?.trim() || null,
       })),
       trust_portal_url: document.getElementById('f-trust-portal-url')?.value.trim() || null,
+      // Suppliers Module Review (puntos 2/3/4/5/6/13)
+      business_importance_level: document.getElementById('f-biz-imp-level')?.value || null,
+      security_risk_level: document.getElementById('f-sec-risk')?.value || null,
+      operating_region: document.getElementById('f-op-region')?.value || null,
+      security_status: document.getElementById('f-sec-status')?.value || null,
+      review_frequency: document.getElementById('f-review-freq')?.value || null,
+      agreement_status: document.getElementById('f-agreement')?.value || null,
+      owner_id: document.getElementById('f-owner')?.value ? parseInt(document.getElementById('f-owner').value) : null,
+      backup_owner_id: document.getElementById('f-backup-owner')?.value ? parseInt(document.getElementById('f-backup-owner').value) : null,
     };
     try {
       if (s) {

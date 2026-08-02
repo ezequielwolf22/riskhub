@@ -276,6 +276,8 @@ const Api = {
     downloadDocumentUrl: (supplierId, docId) => `/api/suppliers/${supplierId}/documents/${docId}/download`,
     deleteDocument: (supplierId, docId) => Api.del(`/api/suppliers/${supplierId}/documents/${docId}`),
     analyzeDocument: (supplierId, docId) => Api.post(`/api/suppliers/${supplierId}/documents/${docId}/analyze`, {}),
+    events: (id) => Api.get(`/api/suppliers/${id}/events`),
+    addEvent: (id, d) => Api.post(`/api/suppliers/${id}/events`, d),
   },
   nonconformities: {
     list: (q) => Api.get('/api/nonconformities/', q),
@@ -485,6 +487,8 @@ const Api = {
     createCustomTemplate: (d) => Api.post('/api/tprm/custom-templates', d),
     updateCustomTemplate: (id, d) => Api.patch('/api/tprm/custom-templates/' + id, d),
     deleteCustomTemplate: (id) => Api.del('/api/tprm/custom-templates/' + id),
+    getSettings: () => Api.get('/api/tprm/settings'),
+    updateSettings: (d) => Api.put('/api/tprm/settings', d),
   },
   regwatch: {
     status: () => Api.get('/api/regwatch/status'),

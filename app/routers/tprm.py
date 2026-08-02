@@ -16,9 +16,15 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.i18n import get_lang, t as _t
-from app.models import Supplier, SupplierTier, TPRMTemplate, User
+from app.models import Supplier, SupplierTier, TPRMTemplate, TprmSettings, User
 from app.schemas import TPRMTemplateCreate, TPRMTemplateOut, TPRMTemplateUpdate
-from app.security import check_org_access, filter_by_org, get_current_user, require_analyst
+from app.security import (
+    check_org_access,
+    filter_by_org,
+    get_current_user,
+    require_admin,
+    require_analyst,
+)
 from app.services import tprm_scoring_service as scoring
 from app.services import tprm_templates
 from app.services.risk_engine import band_for_config, get_risk_bands
@@ -314,3 +320,30 @@ async def get_concentration_risk(
     """DORA Art.28: proveedores con concentracion de riesgo > 40% en procesos criticos."""
     from app.services.supplier_lifecycle_service import compute_concentration_risk
     return compute_concentration_risk(db, current_user.organization_id)
+
+
+# ---------- Configuracion del modulo (feedback cliente: puntos 4/7/11) ----------
+
+@router.get("/settings")
+def get_tprm_settings(db: Session = Depends(get_db),
+                      current_user: User = Depends(get_current_user)):
+    """Configuracion del modulo de proveedores de la organizacion activa."""
+    from app.services import tprm_settings_service as tset
+    org_id = current_user.organization_id
+    st = db.query(TprmSettings).filter(TprmSettings.organization_id == org_id).first()
+    data = tset.as_dict(st)
+    data["region_suggestions"] = tset.bcm_region_suggestions(db, org_id)
+    return data
+
+
+@router.put("/settings")
+def update_tprm_settings(payload: dict, db: Session = Depends(get_db),
+                         current_user: User = Depends(require_admin)):
+    """Actualiza la configuracion del modulo (admin). Regiones editables e
+    independientes de las sedes BCM (punto 4)."""
+    from app.services import tprm_settings_service as tset
+    st = tset.update_settings(db, current_user.organization_id, payload)
+    log_action(db, current_user.id, "update", "tprm_settings", str(st.id))
+    data = tset.as_dict(st)
+    data["region_suggestions"] = tset.bcm_region_suggestions(db, current_user.organization_id)
+    return data
