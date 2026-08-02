@@ -123,6 +123,8 @@ def _proc_d(p: BusinessProcess) -> dict:
         "bia_version": getattr(p, "bia_version", None),
         "bia_review_date": p.bia_review_date.isoformat() if getattr(p, "bia_review_date", None) else None,
         "location_id": getattr(p, "location_id", None),
+        "parent_process_id": getattr(p, "parent_process_id", None),
+        "business_unit": getattr(p, "business_unit", None),
         # BIA dirigido por el metodo del cliente
         "impacts": getattr(p, "impacts", None),
         "weighted_impact": getattr(p, "weighted_impact", None),
@@ -307,6 +309,9 @@ class ProcessIn(BaseModel):
     impact_7d: Optional[int] = None
     bia_version: Optional[str] = None
     bia_review_date: Optional[str] = None
+    location_id: Optional[int] = None
+    parent_process_id: Optional[int] = None
+    business_unit: Optional[str] = None
     # BIA dirigido por el metodo del cliente: {dimension: {horizonte: nivel}}
     impacts: Optional[dict] = None
 
@@ -342,6 +347,9 @@ class ProcessUpdate(BaseModel):
     impact_7d: Optional[int] = None
     bia_version: Optional[str] = None
     bia_review_date: Optional[str] = None
+    location_id: Optional[int] = None
+    parent_process_id: Optional[int] = None
+    business_unit: Optional[str] = None
     impacts: Optional[dict] = None
 
 
@@ -673,6 +681,10 @@ def create_process(body: ProcessIn, request: Request, db: Session = Depends(get_
     if body.criticality not in VALID_CRITICALITY:
         raise HTTPException(422, _t("bcp.invalid_criticality_valid", get_lang(request), valid=VALID_CRITICALITY))
     org = _org(u)
+    if body.parent_process_id is not None:
+        parent = db.get(BusinessProcess, body.parent_process_id)
+        if not parent or parent.organization_id != org:
+            raise HTTPException(422, "Proceso padre invalido.")
     # GDPR: escalation_contacts puede contener nombre, email y teléfono (datos personales).
     # Base legal: Art. 6(1)(f) RGPD — interés legítimo (continuidad del negocio).
     # Los datos solo deben ser de empleados de la organización.
@@ -704,11 +716,18 @@ def update_process(pid: int, body: ProcessUpdate, request: Request, db: Session 
         raise HTTPException(404)
     if body.criticality and body.criticality not in VALID_CRITICALITY:
         raise HTTPException(422, _t("bcp.invalid_criticality", get_lang(request)))
+    _sent = body.model_dump(exclude_unset=True)
+    if "parent_process_id" in _sent:
+        _guard_parent_process(db, _org(u), pid, _sent["parent_process_id"], get_lang(request))
     # GDPR: escalation_contacts puede contener datos personales (Art. 6(1)(f) RGPD).
     for k, v in body.model_dump(exclude_none=True).items():
         if k == "bia_review_date":
             v = _parse_dt(v, "bia_review_date")
         setattr(p, k, v)
+    # parent_process_id se trata aparte: enviar null lo desvincula (exclude_none
+    # lo habria descartado). El resto del PATCH conserva su semantica de siempre.
+    if "parent_process_id" in _sent:
+        p.parent_process_id = _sent["parent_process_id"]
     # Recalcular impacto ponderado y banda con el metodo vigente si cambio la
     # valoracion o el RTO (el motor decide, no la vista).
     from app.services.bcm_scenario_engine import get_criteria, recompute_process
@@ -805,6 +824,39 @@ def dependency_tree(db: Session = Depends(get_db), u: User = Depends(get_current
         "totals": {"locations": len(locs), "processes": len(procs),
                    "dependencies": len(deps)},
     }
+
+
+@router.get("/continuity-map")
+def continuity_map(db: Session = Depends(get_db), u: User = Depends(get_current_user)):
+    """Mapa de continuidad: jerarquia real (sede anidada -> unidad -> proceso ->
+    subproceso -> dependencias) con RTO efectivo y hallazgos de coherencia."""
+    from app.services.bcp_hierarchy_service import build_continuity_map
+    return build_continuity_map(db, _org(u))
+
+
+def _guard_parent_process(db, org: int, pid: int, parent_id: Optional[int], lang: str):
+    """Evita que un proceso sea su propio ancestro (ciclo en la jerarquia)."""
+    if parent_id is None:
+        return
+    if parent_id == pid:
+        raise HTTPException(422, _t("bcp.parent_self", lang) if _has_key("bcp.parent_self", lang)
+                            else "Un proceso no puede ser su propio padre.")
+    seen = {pid}
+    cur = db.get(BusinessProcess, parent_id)
+    while cur is not None:
+        if cur.organization_id != org:
+            raise HTTPException(422, "Proceso padre invalido.")
+        if cur.id in seen:
+            raise HTTPException(422, "La jerarquia de procesos no puede tener ciclos.")
+        seen.add(cur.id)
+        cur = db.get(BusinessProcess, cur.parent_process_id) if cur.parent_process_id else None
+
+
+def _has_key(key: str, lang: str) -> bool:
+    try:
+        return _t(key, lang) != key
+    except Exception:
+        return False
 
 
 @router.post("/dependencies", status_code=201)

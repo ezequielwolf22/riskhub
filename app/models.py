@@ -2869,6 +2869,11 @@ class BusinessProcess(Base):
     bia_version = Column(String(16), nullable=True)        # Version del BIA (ej. "v1.0")
     bia_review_date = Column(DateTime, nullable=True)      # Proxima revision del BIA
     location_id = Column(Integer, ForeignKey("bcm_locations.id"), nullable=True)
+    # Jerarquia real del BIA: un proceso puede colgar de un macro-proceso, y ese
+    # de otro (macro-proceso -> proceso -> actividad, N niveles). `business_unit`
+    # agrupa procesos por area/departamento por encima de la sede.
+    parent_process_id = Column(Integer, ForeignKey("business_processes.id"), nullable=True)
+    business_unit = Column(String(128), nullable=True)
     # BIA dirigido por el metodo declarado de la organizacion (BIACriteria):
     # impacto por dimension y horizonte {dimension: {horizonte: nivel}}. El
     # impacto ponderado y la banda los calcula el MISMO motor determinista que
