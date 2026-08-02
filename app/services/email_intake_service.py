@@ -132,6 +132,32 @@ def extract_docx_form_fields(data: bytes) -> dict:
         return {}
 
 
+def _apply_form_classification(supplier, structured_fields: dict) -> None:
+    """Aplica la clasificacion inicial declarada en el formulario (punto 1).
+
+    Reutiliza la normalizacion ES/EN del import; solo rellena lo que venga en el
+    formulario y no pisa valores ya presentes."""
+    from app.services.supplier_import_service import (
+        _AGREEMENT_STATUS_MAP, _BUSINESS_IMPORTANCE_MAP, _map_value,
+        _REVIEW_FREQUENCY_MAP, _SECURITY_RISK_MAP,
+    )
+    sf = structured_fields or {}
+    mappings = [
+        ("business_importance_level", _BUSINESS_IMPORTANCE_MAP),
+        ("security_risk_level", _SECURITY_RISK_MAP),
+        ("review_frequency", _REVIEW_FREQUENCY_MAP),
+        ("agreement_status", _AGREEMENT_STATUS_MAP),
+    ]
+    for field, table in mappings:
+        raw = sf.get(field)
+        if raw and not getattr(supplier, field, None):
+            mapped = _map_value(str(raw), table)
+            if mapped:
+                setattr(supplier, field, mapped)
+    if sf.get("operating_region") and not supplier.operating_region:
+        supplier.operating_region = str(sf["operating_region"])[:64]
+
+
 def map_structured_fields_to_supplier(fields: dict, field_mapping: Optional[dict]) -> dict:
     """Aplica field_mapping ({campo_form: campo_supplier}) y, si falta 'name',
     intenta resolverlo por sinonimos comunes (mismo concepto que Via 3)."""
@@ -479,6 +505,14 @@ def process_email(cfg, db: Session, parsed: dict, org_id: Optional[int]) -> dict
         email_extraction_method=extraction_method,
         email_needs_review=needs_review,
     )
+    # Punto 1: usar respuestas del formulario para la clasificacion inicial
+    # (importancia de negocio / riesgo de seguridad / region / frecuencia), con
+    # normalizacion ES/EN. Se valida/confirma tras el cuestionario.
+    try:
+        _apply_form_classification(supplier, structured_fields)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("email_intake: error aplicando clasificacion del formulario: %s", exc)
+
     db.add(supplier)
     db.flush()
 

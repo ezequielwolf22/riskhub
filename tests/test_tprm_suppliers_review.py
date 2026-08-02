@@ -246,6 +246,45 @@ class TestAiAssistants:
         assert cur.json()["security_risk_level"] is None
 
 
+class TestOnboardingClassification:
+    def test_form_classification_normalized(self):
+        # Punto 1: respuestas del formulario -> clasificacion inicial normalizada
+        from app.services.email_intake_service import _apply_form_classification
+
+        class _S:
+            business_importance_level = None
+            security_risk_level = None
+            review_frequency = None
+            agreement_status = None
+            operating_region = None
+
+        s = _S()
+        _apply_form_classification(s, {
+            "business_importance_level": "Important",
+            "security_risk_level": "High",
+            "operating_region": "Spain",
+            "review_frequency": "Annual",
+        })
+        assert s.business_importance_level == "important"
+        assert s.security_risk_level == "high"
+        assert s.operating_region == "Spain"
+        assert s.review_frequency == "annual"
+
+    def test_form_classification_does_not_overwrite(self):
+        from app.services.email_intake_service import _apply_form_classification
+
+        class _S:
+            business_importance_level = "critical"
+            security_risk_level = None
+            review_frequency = None
+            agreement_status = None
+            operating_region = None
+
+        s = _S()
+        _apply_form_classification(s, {"business_importance_level": "Normal"})
+        assert s.business_importance_level == "critical"  # no pisa lo existente
+
+
 class TestImportEnhancements:
     def test_import_new_fields(self, client, auth_headers):
         csv = (

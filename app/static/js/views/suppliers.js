@@ -465,6 +465,7 @@ const ViewSuppliers = (() => {
             ${canEdit ? `<button class="btn btn-sm" data-id="${s.id}" data-action="recompute" title="Recalcular tier y riesgo">Recalcular</button>` : ''}
             <button class="btn btn-sm" data-id="${s.id}" data-action="edit">Editar</button>
             ${canEdit ? `<button class="btn btn-sm" data-id="${s.id}" data-action="ai" title="Asistente IA (clasificar, analizar, revisar)">IA</button>` : ''}
+            <button class="btn btn-sm" data-id="${s.id}" data-name="${UI.esc(s.name)}" data-action="timeline" title="Timeline de eventos del proveedor">Timeline</button>
             <button class="btn btn-sm" data-id="${s.id}" data-name="${UI.esc(s.name)}" data-action="history" title="Historial de cambios">Historial</button>
             ${canEdit ? `<button class="btn btn-sm btn-danger" data-id="${s.id}" data-action="del">${t('common.delete')}</button>` : ''}
           </td>
@@ -578,6 +579,62 @@ const ViewSuppliers = (() => {
         if (sup) _openAiAssistant(sup);
       };
     });
+    wrap.querySelectorAll('[data-action="timeline"]').forEach(btn => {
+      btn.onclick = () => _openTimeline(btn.dataset.id, btn.dataset.name);
+    });
+  }
+
+  const EVENT_TYPE_LABELS = {
+    security_incident: 'Incidente de seguridad', sla_breach: 'Brecha de SLA',
+    ownership_change: 'Cambio de propiedad', contract_change: 'Cambio de contrato',
+    review_completed: 'Revisión completada', risk_reclassified: 'Riesgo reclasificado',
+    status_change: 'Cambio de estado', assessment_completed: 'Evaluación completada',
+    note: 'Nota', other: 'Otro',
+  };
+
+  async function _openTimeline(id, name) {
+    UI.modal(`Timeline — ${UI.esc(name || '')}`, `
+      <div class="span2">
+        <div style="display:flex;gap:8px;margin-bottom:12px;align-items:flex-end;flex-wrap:wrap;">
+          <div style="flex:1;min-width:180px;"><label style="font-size:12px;">Nueva entrada</label>
+            <input id="tl-title" class="input" placeholder="Título del evento"></div>
+          <select id="tl-type" class="input" style="width:180px;">
+            ${Object.entries(EVENT_TYPE_LABELS).map(([k, l]) => `<option value="${k}">${l}</option>`).join('')}
+          </select>
+          <button class="btn btn-sm btn-primary" id="tl-add">Añadir</button>
+        </div>
+        <div id="tl-list"><p class="text-muted" style="font-size:13px;">Cargando…</p></div>
+      </div>
+    `, { actions: `<button class="btn" onclick="UI.closeModal()">Cerrar</button>`, width: 'min(96vw, 680px)' });
+    const listEl = document.getElementById('tl-list');
+    const load = async () => {
+      try {
+        const evs = await Api.suppliers.events(id);
+        if (!evs.length) { listEl.innerHTML = '<p class="text-muted" style="font-size:13px;">Sin eventos todavía.</p>'; return; }
+        listEl.innerHTML = evs.map(e => `
+          <div style="display:flex;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);">
+            <div style="width:8px;height:8px;border-radius:50%;background:var(--brand-purple);margin-top:6px;flex-shrink:0;"></div>
+            <div style="flex:1;">
+              <div style="font-size:13px;font-weight:600;">${UI.esc(e.title)}
+                <span style="font-size:10px;font-weight:600;color:var(--text-muted);background:var(--bg-2);border:1px solid var(--border);border-radius:999px;padding:1px 6px;margin-left:6px;">${EVENT_TYPE_LABELS[e.event_type] || e.event_type}</span>
+                ${e.source === 'auto' ? '<span style="font-size:10px;color:var(--text-muted);">· auto</span>' : ''}
+              </div>
+              ${e.description ? `<div style="font-size:12px;color:var(--text-muted);margin-top:2px;">${UI.esc(e.description)}</div>` : ''}
+              <div style="font-size:11px;color:var(--text-subtle);margin-top:2px;">${new Date(e.occurred_at).toLocaleString('es-ES')}</div>
+            </div>
+          </div>`).join('');
+      } catch (e) { listEl.innerHTML = `<div class="notice">${UI.esc(e.message)}</div>`; }
+    };
+    document.getElementById('tl-add').onclick = async () => {
+      const title = document.getElementById('tl-title').value.trim();
+      if (!title) { UI.toast('Título obligatorio', 'error'); return; }
+      try {
+        await Api.suppliers.addEvent(id, { title, event_type: document.getElementById('tl-type').value });
+        document.getElementById('tl-title').value = '';
+        await load();
+      } catch (e) { UI.toast(e.message, 'error'); }
+    };
+    await load();
   }
 
   function _aiListHtml(title, items) {
