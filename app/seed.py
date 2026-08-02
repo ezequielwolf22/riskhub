@@ -972,6 +972,8 @@ def _migrate_columns() -> None:
         ("ALTER TABLE suppliers ADD COLUMN security_status_changed_at DATETIME", "suppliers", "security_status_changed_at"),
         ("ALTER TABLE suppliers ADD COLUMN security_status_changed_by_id INTEGER REFERENCES users(id)", "suppliers", "security_status_changed_by_id"),
         ("ALTER TABLE suppliers ADD COLUMN agreement_status VARCHAR(24)", "suppliers", "agreement_status"),
+        ("ALTER TABLE vendor_issues ADD COLUMN closure_approved_by_id INTEGER REFERENCES users(id)", "vendor_issues", "closure_approved_by_id"),
+        ("ALTER TABLE vendor_issues ADD COLUMN closure_approved_at DATETIME", "vendor_issues", "closure_approved_at"),
     ]
     # Inspeccion de columnas portable (SQLite y PostgreSQL): en un PostgreSQL
     # recien creado, create_all() ya materializo todas las columnas de los

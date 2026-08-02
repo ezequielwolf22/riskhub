@@ -1966,6 +1966,9 @@ class VendorIssue(Base):
     auto_generated_source = Column(String(64), nullable=True)  # osint|cve|score_decay|concentration
     linked_risk_id = Column(Integer, ForeignKey("risks.id"), nullable=True)
     resolved_by_action = Column(String(255), nullable=True)  # descripcion de como se resolvio
+    # v6.7.0 — Suppliers Module Review (punto 9): el cierre requiere aprobacion de Seguridad
+    closure_approved_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    closure_approved_at = Column(DateTime, nullable=True)
 
     supplier = relationship("Supplier")
 

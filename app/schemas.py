@@ -1537,6 +1537,9 @@ class SupplierQuestionnaireCreate(BaseModel):
     notify_email: Optional[str] = None        # v4.3.0: email de notificacion cuando el proveedor responde
     assigned_user_id: Optional[int] = None    # v4.4.0: asignacion interna
     assignment_type: Optional[str] = "external"  # external | internal
+    # v6.7.0 — Suppliers Module Review
+    prefill_from_previous: Optional[bool] = False   # punto 8: reutilizar respuestas del ultimo cuestionario
+    apply_trigger_modules: Optional[bool] = True    # punto 7: adjuntar modulos add-on segun perfil
 
 
 # ---------- TPRM: PLANTILLAS EDITABLES ----------
@@ -1720,6 +1723,8 @@ class VendorIssueOut(ORMBase):
     action_items: Optional[list[dict]] = None
     evidence_refs: Optional[list[dict]] = None
     resolution_notes: Optional[str] = None
+    closure_approved_by_id: Optional[int] = None
+    closure_approved_at: Optional[datetime] = None
     created_at: datetime
     updated_at: datetime
 

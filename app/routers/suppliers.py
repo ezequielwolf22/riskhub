@@ -359,6 +359,16 @@ def update_supplier(supplier_id: int, body: SupplierUpdate,
     except Exception as _e:
         logger.warning("Supplier timeline log failed for %s: %s", s.code, _e)
 
+    # Notificacion post-review cuando el estado de seguridad pasa a una DECISION (punto 11)
+    try:
+        from app.services.tprm_notifications_service import DECISION_STATUSES, notify_security_decision
+        if ("security_status" in payload
+                and payload["security_status"] != _before["security_status"]
+                and s.security_status in DECISION_STATUSES):
+            notify_security_decision(db, s, s.security_status, user_id=current_user.id)
+    except Exception as _e:
+        logger.warning("Post-review notify failed for %s: %s", s.code, _e)
+
     # Auto-crear riesgo ISO 27005 cuando la puntuacion baja al umbral critico
     try:
         _auto_create_supplier_risk(db, s, old_score, old_risk_level, current_user)

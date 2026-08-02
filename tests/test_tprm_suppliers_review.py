@@ -116,6 +116,97 @@ class TestTprmSettings:
         assert again.json()["operating_regions"] == ["Global", "DACH", "Nordics"]
 
 
+class TestAutomaticFindings:
+    def test_mfa_no_generates_finding(self, client, auth_headers):
+        s = _create_supplier(client, auth_headers, name="MFA Vendor")
+        # cuestionario con una pregunta Major de MFA (sin MFA puntua 0)
+        q = client.post("/api/supplier-questionnaires/", json={
+            "supplier_id": s["id"], "title": "SSAQ", "apply_trigger_modules": False,
+            "questions": [
+                {"id": "mfa", "text": "¿MFA implementado?", "type": "yes_no",
+                 "criticity": "Major", "scoring_rules": {"yes": 100, "no": 0},
+                 "control_refs": ["ISO27001:A.8.5"]},
+                {"id": "backups", "text": "¿Backups?", "type": "yes_no",
+                 "criticity": "Minor", "scoring_rules": {"yes": 100, "no": 0}},
+            ],
+        }, headers=auth_headers)
+        assert q.status_code == 200, q.text
+        token = q.json()["token"]
+        sub = client.post(f"/api/supplier-questionnaires/public/{token}/submit",
+                         json={"answers": {"mfa": "no", "backups": "yes"}})
+        assert sub.status_code == 200, sub.text
+        issues = client.get(f"/api/vendor-issues/?supplier_id={s['id']}", headers=auth_headers)
+        assert issues.status_code == 200
+        auto = [i for i in issues.json() if i.get("source") == "questionnaire"]
+        assert auto, "no se generó hallazgo automático"
+        assert any(i["severity"] == "critical" for i in auto)  # sin MFA (score 0) en Major
+
+    def test_conformant_answers_no_finding(self, client, auth_headers):
+        s = _create_supplier(client, auth_headers, name="Clean Vendor")
+        q = client.post("/api/supplier-questionnaires/", json={
+            "supplier_id": s["id"], "title": "SSAQ", "apply_trigger_modules": False,
+            "questions": [{"id": "mfa", "text": "¿MFA?", "type": "yes_no",
+                          "criticity": "Major", "scoring_rules": {"yes": 100, "no": 0}}],
+        }, headers=auth_headers)
+        token = q.json()["token"]
+        client.post(f"/api/supplier-questionnaires/public/{token}/submit",
+                   json={"answers": {"mfa": "yes"}})
+        issues = client.get(f"/api/vendor-issues/?supplier_id={s['id']}", headers=auth_headers)
+        auto = [i for i in issues.json() if i.get("source") == "questionnaire"]
+        assert not auto
+
+
+class TestFindingClosureApproval:
+    def test_approve_closure_stamps_approver(self, client, auth_headers):
+        s = _create_supplier(client, auth_headers, name="Issue Vendor")
+        iss = client.post("/api/vendor-issues/", json={
+            "supplier_id": s["id"], "title": "Hallazgo manual", "severity": "high",
+        }, headers=auth_headers)
+        assert iss.status_code == 200, iss.text
+        iid = iss.json()["id"]
+        resp = client.post(f"/api/vendor-issues/{iid}/approve-closure",
+                          json={"resolution_notes": "Verificado"}, headers=auth_headers)
+        assert resp.status_code == 200, resp.text
+        data = resp.json()
+        assert data["status"] == "closed"
+        assert data["closure_approved_by_id"] is not None
+        assert data["closure_approved_at"] is not None
+
+
+class TestPostReviewDecision:
+    def test_decision_transition_ok_without_config(self, client, auth_headers):
+        # sin notificaciones configuradas, la transicion de decision no debe fallar
+        s = _create_supplier(client, auth_headers, name="Decision Vendor",
+                            security_status="pending_security_review")
+        resp = client.patch(f"/api/suppliers/{s['id']}",
+                          json={"security_status": "security_approved"}, headers=auth_headers)
+        assert resp.status_code == 200
+        assert resp.json()["security_status"] == "security_approved"
+
+
+class TestQuestionnaireReuse:
+    def test_prefill_from_previous(self, client, auth_headers):
+        s = _create_supplier(client, auth_headers, name="Reuse Vendor")
+        q1 = client.post("/api/supplier-questionnaires/", json={
+            "supplier_id": s["id"], "title": "SSAQ 2025", "apply_trigger_modules": False,
+            "questions": [{"id": "mfa", "text": "¿MFA?", "type": "yes_no",
+                          "scoring_rules": {"yes": 100, "no": 0}}],
+        }, headers=auth_headers)
+        token = q1.json()["token"]
+        client.post(f"/api/supplier-questionnaires/public/{token}/submit",
+                   json={"answers": {"mfa": "yes"}})
+        # nuevo cuestionario reutilizando respuestas
+        q2 = client.post("/api/supplier-questionnaires/", json={
+            "supplier_id": s["id"], "title": "SSAQ 2026", "apply_trigger_modules": False,
+            "prefill_from_previous": True,
+            "questions": [{"id": "mfa", "text": "¿MFA?", "type": "yes_no",
+                          "scoring_rules": {"yes": 100, "no": 0}}],
+        }, headers=auth_headers)
+        assert q2.status_code == 200, q2.text
+        full = client.get(f"/api/supplier-questionnaires/{q2.json()['id']}", headers=auth_headers)
+        assert (full.json().get("answers") or {}).get("mfa") == "yes"
+
+
 class TestImportEnhancements:
     def test_import_new_fields(self, client, auth_headers):
         csv = (

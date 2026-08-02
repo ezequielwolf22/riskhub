@@ -153,6 +153,25 @@ def create_questionnaire(body: SupplierQuestionnaireCreate, request: Request,
             raise HTTPException(404, _t("supplier_questionnaires.template_not_found", lang))
         questions = tpl["questions"]
         template_code = tpl["code"]
+    else:
+        # Punto 7: sin plantilla explicita, usar la plantilla estandar configurada por Admin
+        from app.services import tprm_settings_service as _tset
+        _st = _tset.get_or_create(db, current_user.organization_id)
+        if _st.default_template_code:
+            from app.services import tprm_templates
+            _tpl = tprm_templates.get_template(_st.default_template_code)
+            if _tpl:
+                questions = _tpl["questions"]
+                template_code = _tpl["code"]
+
+    # Punto 7: adjuntar modulos add-on segun el perfil del proveedor (datos personales,
+    # regulatorio, offboarding...). Se disparan automaticamente, sin crear versiones aparte.
+    if body.apply_trigger_modules:
+        try:
+            questions = _apply_trigger_modules(db, current_user.organization_id, supplier, questions)
+        except Exception as _me:
+            logger.warning("apply_trigger_modules failed: %s", _me)
+
     now = datetime.now(timezone.utc)
     assignment_type = body.assignment_type or "external"
     q = SupplierQuestionnaire(
@@ -171,12 +190,73 @@ def create_questionnaire(body: SupplierQuestionnaireCreate, request: Request,
         created_by_id=current_user.id,
         organization_id=current_user.organization_id,
     )
+    # Punto 8: reutilizar respuestas del ultimo cuestionario respondido del proveedor.
+    # El proveedor solo confirma o reporta cambios; reduce el esfuerzo de re-evaluar.
+    if body.prefill_from_previous:
+        try:
+            prev = (
+                db.query(SupplierQuestionnaire)
+                .filter(
+                    SupplierQuestionnaire.supplier_id == body.supplier_id,
+                    SupplierQuestionnaire.submitted_at.isnot(None),
+                    SupplierQuestionnaire.id != q.id if q.id else True,
+                )
+                .order_by(SupplierQuestionnaire.submitted_at.desc())
+                .first()
+            )
+            if prev and prev.answers:
+                q.answers = dict(prev.answers)
+        except Exception as _pe:
+            logger.warning("prefill_from_previous failed: %s", _pe)
+
     db.add(q)
     db.commit()
     db.refresh(q)
     log_action(db, current_user.id, "create", "supplier_questionnaire", str(q.id),
                {"supplier": supplier.name})
     return q
+
+
+# Mapa perfil del proveedor -> clave de modulo add-on (punto 7)
+def _triggered_module_keys(supplier) -> list[str]:
+    keys = []
+    if getattr(supplier, "processes_personal_data", False) or getattr(supplier, "is_data_processor", False):
+        keys.append("personal_data")
+    if getattr(supplier, "is_nis2", False) or getattr(supplier, "is_dora", False) or getattr(supplier, "is_ens", False):
+        keys.append("regulatory")
+    if (getattr(supplier, "relationship_status", None)
+            and str(getattr(supplier.relationship_status, "value", supplier.relationship_status)) == "offboarding"):
+        keys.append("offboarding")
+    if (getattr(supplier, "vendor_type", "") or "").lower() in ("ai", "ai_provider"):
+        keys.append("ai_usage")
+    return keys
+
+
+def _apply_trigger_modules(db, org_id, supplier, questions):
+    """Anade preguntas de los modulos add-on configurados que apliquen al proveedor.
+
+    Config en TprmSettings.trigger_modules = {module_key: template_code}. Dedupe por id.
+    """
+    from app.models import TprmSettings
+    from app.services import tprm_templates
+    st = db.query(TprmSettings).filter(TprmSettings.organization_id == org_id).first()
+    mapping = (st.trigger_modules if st else None) or {}
+    if not mapping:
+        return questions
+    existing_ids = {str(q.get("id")) for q in (questions or [])}
+    result = list(questions or [])
+    for key in _triggered_module_keys(supplier):
+        code = mapping.get(key)
+        if not code:
+            continue
+        tpl = tprm_templates.get_template(code)
+        if not tpl:
+            continue
+        for qq in tpl.get("questions", []):
+            if str(qq.get("id")) not in existing_ids:
+                result.append(qq)
+                existing_ids.add(str(qq.get("id")))
+    return result
 
 
 @router.delete("/{qid}", status_code=204)
@@ -557,6 +637,16 @@ def submit_public_questionnaire(token: str, body: dict, request: Request,
         except Exception:
             pass
     db.commit()
+
+    # Punto 10 — generacion determinista de hallazgos desde respuestas no-conformes.
+    # Independiente de la IA: usa criticidad + scoring de la plantilla.
+    try:
+        from app.services import tprm_findings_service
+        n_findings = tprm_findings_service.generate_from_questionnaire(db, q)
+        if n_findings:
+            logger.info("Cuestionario %s: %s hallazgos automaticos creados", q.code, n_findings)
+    except Exception as _fe:
+        logger.warning("Auto-findings from questionnaire %s failed: %s", q.id, _fe)
 
     # Bucle cerrado: cuestionario respondido → cerrar VendorIssues de expiry pendientes
     try:

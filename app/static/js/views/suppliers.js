@@ -199,11 +199,14 @@ const ViewSuppliers = (() => {
     const actions = document.getElementById('sup-header-actions');
     if (actions) {
       if (tab === 'suppliers') {
-        actions.innerHTML = (Auth.canEdit() ? `<button class="btn" id="btn-import-sup">${window.t('suppliers.import_btn')}</button> ` : '')
+        actions.innerHTML = (Auth.canEdit() ? `<button class="btn" id="btn-tprm-settings" title="Configuración del módulo">⚙ Configuración</button> ` : '')
+          + (Auth.canEdit() ? `<button class="btn" id="btn-import-sup">${window.t('suppliers.import_btn')}</button> ` : '')
           + `<button class="btn btn-primary" id="btn-new-sup">${window.t('suppliers.new_btn')}</button>`;
         document.getElementById('btn-new-sup').onclick = () => _openForm(null);
         const impBtn = document.getElementById('btn-import-sup');
         if (impBtn) impBtn.onclick = () => _openImport();
+        const cfgBtn = document.getElementById('btn-tprm-settings');
+        if (cfgBtn) cfgBtn.onclick = () => _openTprmSettings();
       } else if (tab === 'questionnaires') {
         actions.innerHTML = Auth.canEdit() ? `<button class="btn btn-primary" id="btn-new-seq">${window.t('suppliers.new_questionnaire_btn')}</button>` : '';
         if (Auth.canEdit()) document.getElementById('btn-new-seq').onclick = () => _openSeqForm(null);
@@ -2225,6 +2228,81 @@ const ViewSuppliers = (() => {
     } catch (e) { UI.toast(e.message, 'error'); }
   }
 
+  async function _openTprmSettings() {
+    let cfg = {}; let templates = [];
+    try {
+      [cfg, templates] = await Promise.all([Api.tprm.getSettings(), Api.tprm.templates().catch(() => [])]);
+    } catch (e) { UI.toast(e.message, 'error'); return; }
+    const tplOptions = (sel) => `<option value="">- Ninguna -</option>` +
+      templates.map(tp => `<option value="${tp.code}" ${sel === tp.code ? 'selected' : ''}>${UI.esc(tp.name)}</option>`).join('');
+    const modKeys = [
+      ['personal_data', 'Datos personales'], ['regulatory', 'Regulatorio'],
+      ['offboarding', 'Offboarding'], ['ai_usage', 'Uso de IA'],
+    ];
+    const trig = cfg.trigger_modules || {};
+    const recips = JSON.stringify(cfg.review_notify_recipients || {}, null, 2);
+    UI.modal('Configuración del módulo de proveedores', `
+      <div class="span2" style="display:grid;gap:14px;">
+        <div>
+          <label><b>Regiones operativas</b> <span style="font-size:11px;color:var(--text-muted);">(una por línea; editable e independiente de las sedes)</span></label>
+          <textarea id="cfg-regions" class="input" rows="5">${UI.esc((cfg.operating_regions || []).join('\n'))}</textarea>
+          ${(cfg.region_suggestions || []).length ? `<p style="font-size:11px;color:var(--text-muted);margin-top:4px;">Sugerencias desde sedes BCM: ${cfg.region_suggestions.map(r => UI.esc(r)).join(', ')}</p>` : ''}
+        </div>
+        <div>
+          <label><b>Plantilla de cuestionario estándar</b> <span style="font-size:11px;color:var(--text-muted);">(punto 7 — se usa por defecto al crear cuestionarios)</span></label>
+          <select id="cfg-default-tpl" class="input">${tplOptions(cfg.default_template_code)}</select>
+        </div>
+        <div>
+          <label><b>Módulos add-on (se disparan según perfil del proveedor)</b></label>
+          <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-top:4px;">
+            ${modKeys.map(([k, lbl]) => `<div><label style="font-size:12px;">${lbl}</label><select class="input cfg-mod" data-key="${k}">${tplOptions(trig[k])}</select></div>`).join('')}
+          </div>
+        </div>
+        <div style="border-top:1px solid var(--border);padding-top:10px;">
+          <label style="display:flex;align-items:center;gap:8px;"><input type="checkbox" id="cfg-notify" ${cfg.review_notify_enabled ? 'checked' : ''}> <b>Notificar decisión de seguridad a destinatarios configurados (punto 11)</b></label>
+          <p style="font-size:11px;color:var(--text-muted);margin:4px 0;">Destinatarios por región (JSON). Ej: <code>{"__default__":{"finance":["fin@x.com"],"legal":["legal@x.com"]},"Spain":{"finance":["fin.es@x.com"]}}</code></p>
+          <textarea id="cfg-recipients" class="input" rows="5" style="font-family:monospace;font-size:12px;">${UI.esc(recips)}</textarea>
+        </div>
+        <div style="border-top:1px solid var(--border);padding-top:10px;">
+          <label><b>Email estándar del cuestionario (punto 7)</b></label>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:4px;">
+            <div><label style="font-size:12px;">Asunto (EN)</label><input id="cfg-subj-en" class="input" value="${UI.esc(cfg.standard_email_subject_en || '')}"></div>
+            <div><label style="font-size:12px;">Asunto (ES)</label><input id="cfg-subj-es" class="input" value="${UI.esc(cfg.standard_email_subject_es || '')}"></div>
+            <div><label style="font-size:12px;">Cuerpo (EN)</label><textarea id="cfg-body-en" class="input" rows="3">${UI.esc(cfg.standard_email_body_en || '')}</textarea></div>
+            <div><label style="font-size:12px;">Cuerpo (ES)</label><textarea id="cfg-body-es" class="input" rows="3">${UI.esc(cfg.standard_email_body_es || '')}</textarea></div>
+          </div>
+        </div>
+      </div>
+    `, {
+      actions: `<button class="btn" id="cfg-cancel">Cancelar</button><button class="btn btn-primary" id="cfg-save">Guardar</button>`,
+      width: 'min(96vw, 820px)',
+    });
+    document.getElementById('cfg-cancel').onclick = UI.closeModal;
+    document.getElementById('cfg-save').onclick = async () => {
+      const mods = {};
+      document.querySelectorAll('.cfg-mod').forEach(sel => { if (sel.value) mods[sel.dataset.key] = sel.value; });
+      let recipients = {};
+      try { recipients = JSON.parse(document.getElementById('cfg-recipients').value || '{}'); }
+      catch (e) { UI.toast('Destinatarios: JSON no válido', 'error'); return; }
+      const payload = {
+        operating_regions: document.getElementById('cfg-regions').value.split('\n').map(s => s.trim()).filter(Boolean),
+        default_template_code: document.getElementById('cfg-default-tpl').value || null,
+        trigger_modules: mods,
+        review_notify_enabled: document.getElementById('cfg-notify').checked,
+        review_notify_recipients: recipients,
+        standard_email_subject_en: document.getElementById('cfg-subj-en').value.trim() || null,
+        standard_email_subject_es: document.getElementById('cfg-subj-es').value.trim() || null,
+        standard_email_body_en: document.getElementById('cfg-body-en').value.trim() || null,
+        standard_email_body_es: document.getElementById('cfg-body-es').value.trim() || null,
+      };
+      try {
+        await Api.tprm.updateSettings(payload);
+        UI.toast('Configuración guardada', 'success');
+        UI.closeModal();
+      } catch (e) { UI.toast(e.message, 'error'); }
+    };
+  }
+
   function _openImport() {
     UI.modal(t('suppliers.import_suppliers'), `
       <div class="span2">
@@ -2727,6 +2805,14 @@ const ViewSuppliers = (() => {
       <div class="span2"><label>Notas internas</label>
         <textarea id="sq-notes" rows="2" placeholder="Notas para el equipo interno (no visibles para el proveedor)"></textarea>
       </div>
+      <div class="span2" style="display:flex;flex-direction:column;gap:6px;background:var(--bg-2);border:1px solid var(--border);border-radius:6px;padding:8px 10px;">
+        <label style="display:flex;align-items:center;gap:8px;margin:0;cursor:pointer;font-size:13px;">
+          <input type="checkbox" id="sq-prefill"> Reutilizar respuestas del último cuestionario respondido (el proveedor solo confirma o reporta cambios)
+        </label>
+        <label style="display:flex;align-items:center;gap:8px;margin:0;cursor:pointer;font-size:13px;">
+          <input type="checkbox" id="sq-modules" checked> Adjuntar módulos add-on automáticamente según el perfil del proveedor (datos personales, regulatorio, offboarding…)
+        </label>
+      </div>
       <div class="span2 notice">
         Elige una plantilla del sistema (ISO 27001, NIS2, DORA, GDPR, ISO 42001, offboarding...) o el set estandar. Tras crear el cuestionario, copia el enlace publico para enviarlo al proveedor.
       </div>
@@ -2751,6 +2837,8 @@ const ViewSuppliers = (() => {
         template_code: tplVal.startsWith('sys:') ? tplVal.slice(4) : null,
         custom_template_id: tplVal.startsWith('custom:') ? parseInt(tplVal.slice(7)) : null,
         notify_email: notifyEmail || null,
+        prefill_from_previous: document.getElementById('sq-prefill')?.checked || false,
+        apply_trigger_modules: document.getElementById('sq-modules')?.checked !== false,
       };
       try {
         const q = await Api.supplier_questionnaires.create(body);

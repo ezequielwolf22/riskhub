@@ -529,6 +529,7 @@ const Api = {
     update: (id, d) => Api.patch('/api/vendor-issues/' + id, d),
     del: (id) => Api.del('/api/vendor-issues/' + id),
     summary: () => Api.get('/api/vendor-issues/stats/summary'),
+    approveClosure: (id, d) => Api.post('/api/vendor-issues/' + id + '/approve-closure', d || {}),
   },
   supplier_questionnaires_ai: {
     triggerReview: (id) => Api.post('/api/supplier-questionnaires/' + id + '/ai-review', {}),
