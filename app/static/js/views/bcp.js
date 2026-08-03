@@ -5390,6 +5390,75 @@ const ViewBcp = (() => {
   };
   const _TREE_CRIT = { critical: '#DC2626', high: '#EA580C', medium: '#D97706', low: '#16a34a' };
 
+  // Fase 2: panel de analisis de impacto (grafo proceso->proceso).
+  let _impactExpanded = {};
+  async function _renderImpactPanel(container) {
+    const box = container.querySelector('#dt-impact');
+    if (!box) return;
+    let a;
+    try { a = await Api.get('/api/bcp/impact-analysis'); }
+    catch (e) { box.innerHTML = ''; return; }
+    if (!a || !a.has_process_deps) {
+      box.innerHTML = '<div class="notice" style="font-size:12px">' + UI.esc(t('bcp.impact_none')) + '</div>';
+      return;
+    }
+    const critC = { critical: '#DC2626', high: '#EA580C', medium: '#D97706', low: '#16a34a' };
+    let html = '<div class="card" style="border-left:3px solid var(--brand-orange)">'
+      + '<h3 style="margin:0 0 2px">' + UI.esc(t('bcp.impact_title')) + '</h3>'
+      + '<p style="margin:0 0 12px;font-size:12px;color:var(--text-subtle)">' + UI.esc(t('bcp.impact_hint')) + '</p>';
+
+    // Ciclos (bloquean el orden de recuperacion): aviso rojo.
+    if ((a.cycles || []).length) {
+      html += '<div class="notice notice-error" style="margin-bottom:12px;font-size:12px">'
+        + '<b>' + UI.esc(t('bcp.impact_cycles')) + '</b><br>'
+        + a.cycles.map(c => UI.esc(c.join(' → '))).join('<br>') + '</div>';
+    }
+
+    // Camino critico de recuperacion.
+    const cp = a.critical_path || {};
+    if ((cp.nodes || []).length > 1) {
+      html += '<div style="margin-bottom:14px">'
+        + '<div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-subtle);margin-bottom:6px">'
+        + UI.esc(t('bcp.impact_critical_path')) + '</div>'
+        + '<div style="display:flex;flex-wrap:wrap;align-items:center;gap:4px">'
+        + cp.nodes.map((n, i) => (i ? '<i class="ti ti-arrow-right" style="color:var(--text-subtle);font-size:14px"></i>' : '')
+          + '<span class="badge" style="background:var(--brand-purple-4,rgba(89,0,141,.08));color:var(--brand-purple);font-size:12px">'
+          + UI.esc(n.name) + (n.rto_hours != null ? ' · ' + n.rto_hours + 'h' : '') + '</span>').join('')
+        + '</div>'
+        + '<div style="font-size:12px;color:var(--text-muted);margin-top:6px">'
+        + UI.esc(t('bcp.impact_total_rto', { n: cp.total_rto })) + '</div></div>';
+    }
+
+    // Hubs: procesos cuya caida afecta a mas procesos.
+    if ((a.hubs || []).length) {
+      html += '<div style="margin-bottom:6px"><div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-subtle);margin-bottom:6px">'
+        + UI.esc(t('bcp.impact_hubs')) + '</div>';
+      a.hubs.forEach(h => {
+        const c = critC[h.criticality] || '#6B7280';
+        const open = !!_impactExpanded[h.id];
+        html += '<div style="border:1px solid var(--border);border-radius:8px;padding:8px 10px;margin-bottom:6px">'
+          + '<div style="display:flex;align-items:center;gap:8px;cursor:pointer" data-impact-toggle="' + h.id + '">'
+          + '<span style="width:8px;height:8px;border-radius:50%;background:' + c + '"></span>'
+          + '<b style="font-size:13px">' + UI.esc(h.name) + '</b>'
+          + '<span style="color:var(--text-subtle);font-size:12px">' + UI.esc(t('bcp.impact_affects', { n: h.impact_count })) + '</span>'
+          + '<span style="margin-left:auto;color:var(--text-subtle)">' + (open ? '▾' : '▸') + '</span></div>'
+          + (open ? '<div style="margin-top:6px;font-size:12px;color:var(--text-muted);padding-left:16px">'
+            + (h.impact_names || []).map(UI.esc).join(', ') + '</div>' : '')
+          + '</div>';
+      });
+      html += '</div>';
+    }
+    html += '</div>';
+    box.innerHTML = html;
+    box.querySelectorAll('[data-impact-toggle]').forEach(el => {
+      el.onclick = () => {
+        const id = el.dataset.impactToggle;
+        if (_impactExpanded[id]) delete _impactExpanded[id]; else _impactExpanded[id] = 1;
+        _renderImpactPanel(container);
+      };
+    });
+  }
+
   async function _tabGraph(container) {
     container.innerHTML =
       '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px">'
@@ -5402,10 +5471,12 @@ const ViewBcp = (() => {
       + '<button class="btn btn-sm btn-ghost" id="dt-zout" title="Zoom -"><i class="ti ti-zoom-out"></i></button>'
       + '<button class="btn btn-sm btn-ghost" id="dt-fit" title="' + UI.esc(t('bcp.deptree_reset')) + '"><i class="ti ti-arrows-maximize"></i></button>'
       + '</div></div>'
+      + '<div id="dt-impact" style="margin-bottom:14px"></div>'
       + '<div id="dt-viewport" style="position:relative;width:100%;height:600px;overflow:hidden;'
       + 'border:1px solid var(--border);border-radius:var(--radius-lg);background:var(--bg-2);cursor:grab">'
       + '<div id="dt-stage" style="position:absolute;top:0;left:0;transform-origin:0 0;padding:20px"></div></div>';
     _treeZoom = 1; _treePan = { x: 0, y: 0 };
+    _renderImpactPanel(container);
     try {
       _treeData = await Api.get('/api/bcp/dependency-tree');
     } catch (e) {

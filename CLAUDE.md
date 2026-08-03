@@ -140,7 +140,14 @@ Multi-usuario con roles.
 - [ ] Pruebas end-to-end manuales de las vistas nuevas con usuario real
 - [ ] Backlog del modulo Plan Director/Tratamiento: priorizado en `RISKHUB_TREATMENT_MODULE_SPEC.md` (seccion "Backlog de mejoras") — no construir hasta validar con uso real
 
-Deploy: prod (91.99.83.202) el 2026-08-02 — Fase 1 del rework del BCP
+Deploy: prod (91.99.83.202) el 2026-08-03 — Fase 2 del rework del BCP: grafo de
+dependencias proceso->proceso. `bcp_hierarchy_service.build_impact_analysis` +
+`GET /api/bcp/impact-analysis`: propagacion de impacto transitiva (si cae X,
+afecta a N procesos), orden de recuperacion (Kahn), camino critico por RTO (DP
+sobre el topologico) y deteccion de ciclos. Panel "Analisis de impacto" en el
+tile de dependencias (hubs expandibles, camino critico, ciclos). Tests
+test_bcp_impact_analysis.py. Pendiente: Fase 3 (panel unico por proceso) y Fase
+4 (ingesta reconstruye jerarquia). Deploy previo 2026-08-02 — Fase 1 del rework del BCP
 (jerarquia real + precision, pedido por el usuario que no veia la jerarquia de
 procesos/dependencias). BusinessProcess gana `parent_process_id` (macro-proceso
 -> proceso -> actividad) y `business_unit`; `location_id` ya se asigna al

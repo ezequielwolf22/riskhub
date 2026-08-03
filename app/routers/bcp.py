@@ -834,6 +834,14 @@ def continuity_map(db: Session = Depends(get_db), u: User = Depends(get_current_
     return build_continuity_map(db, _org(u))
 
 
+@router.get("/impact-analysis")
+def impact_analysis(db: Session = Depends(get_db), u: User = Depends(get_current_user)):
+    """Grafo proceso->proceso: propagacion de impacto, orden de recuperacion,
+    camino critico por RTO y ciclos."""
+    from app.services.bcp_hierarchy_service import build_impact_analysis
+    return build_impact_analysis(db, _org(u))
+
+
 def _guard_parent_process(db, org: int, pid: int, parent_id: Optional[int], lang: str):
     """Evita que un proceso sea su propio ancestro (ciclo en la jerarquia)."""
     if parent_id is None:

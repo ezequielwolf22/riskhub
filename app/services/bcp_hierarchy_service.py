@@ -261,3 +261,143 @@ def build_continuity_map(db: Session, org_id: Optional[int]) -> dict:
                    "dependencies": len(deps)},
         "findings_total": findings_counter["n"],
     }
+
+
+# ── Fase 2: grafo de dependencias proceso->proceso y propagacion de impacto ────
+
+def build_impact_analysis(db: Session, org_id: Optional[int]) -> dict:
+    """Analiza el grafo proceso->proceso: quien depende de quien, a cuantos
+    procesos afecta la caida de cada uno (propagacion transitiva), el orden de
+    recuperacion, el camino critico por RTO y los ciclos (que impiden un orden).
+
+    Semantica de la arista: una dependencia de tipo `process` sobre P que apunta
+    a Q significa "P NECESITA a Q". Por tanto Q debe recuperarse antes que P, y
+    si Q cae, P se ve afectado.
+    """
+    from app.models import BCPDependency, BusinessProcess
+
+    if not org_id:
+        return {"processes": [], "hubs": [], "recovery_order": [], "cycles": [],
+                "critical_path": {"nodes": [], "total_rto": 0}, "has_process_deps": False}
+
+    procs = db.query(BusinessProcess).filter_by(organization_id=org_id).all()
+    pmap = {p.id: p for p in procs}
+    deps = db.query(BCPDependency).filter_by(organization_id=org_id).all()
+
+    depends_on: dict = {p.id: set() for p in procs}   # P -> {Q que necesita}
+    enables: dict = {p.id: set() for p in procs}       # Q -> {P que lo necesitan}
+    for d in deps:
+        q = getattr(d, "depends_on_process_id", None)
+        if q and q in pmap and d.process_id in pmap and q != d.process_id:
+            depends_on[d.process_id].add(q)
+            enables[q].add(d.process_id)
+
+    has_edges = any(depends_on.values())
+
+    # Propagacion: a cuantos procesos afecta la caida de X (cierre transitivo
+    # siguiendo `enables`, con corte por si hubiera ciclos).
+    def _impact(start: int) -> set:
+        seen, stack = set(), [start]
+        while stack:
+            cur = stack.pop()
+            for nxt in enables.get(cur, ()):  # quien depende de cur
+                if nxt not in seen:
+                    seen.add(nxt)
+                    stack.append(nxt)
+        seen.discard(start)
+        return seen
+
+    impact_sets = {p.id: _impact(p.id) for p in procs}
+
+    # Orden de recuperacion (Kahn sobre Q->P: la dependencia va antes que quien
+    # la usa). Si quedan nodos sin procesar, hay ciclo.
+    indeg = {p.id: len(depends_on[p.id]) for p in procs}
+    queue = sorted([pid for pid, d in indeg.items() if d == 0])
+    order: list = []
+    indeg_work = dict(indeg)
+    while queue:
+        pid = queue.pop(0)
+        order.append(pid)
+        for nxt in sorted(enables.get(pid, ())):
+            indeg_work[nxt] -= 1
+            if indeg_work[nxt] == 0:
+                queue.append(nxt)
+    has_cycle = len(order) < len(procs)
+
+    # Ciclos concretos (para poder mostrarlos): DFS de deteccion.
+    cycles = _find_cycles(depends_on) if has_cycle else []
+
+    # Camino critico: cadena de dependencias mas larga por RTO (DP sobre el orden
+    # topologico). Solo si no hay ciclo que lo invalide.
+    critical_path = {"nodes": [], "total_rto": 0}
+    if not has_cycle and order:
+        best_to = {pid: (_num(pmap[pid].rto_hours) or 0.0) for pid in order}
+        prev = {pid: None for pid in order}
+        for pid in order:  # topo: dependencias antes
+            for nxt in enables.get(pid, ()):
+                cand = best_to[pid] + (_num(pmap[nxt].rto_hours) or 0.0)
+                if cand > best_to[nxt]:
+                    best_to[nxt] = cand
+                    prev[nxt] = pid
+        end = max(order, key=lambda x: best_to[x]) if order else None
+        chain = []
+        cur = end
+        while cur is not None:
+            chain.append(cur)
+            cur = prev[cur]
+        chain.reverse()
+        if len(chain) > 1:
+            critical_path = {
+                "nodes": [{"id": c, "name": pmap[c].name,
+                           "rto_hours": pmap[c].rto_hours} for c in chain],
+                "total_rto": round(best_to[end], 2),
+            }
+
+    proc_out = []
+    for p in procs:
+        imp = impact_sets[p.id]
+        proc_out.append({
+            "id": p.id, "name": p.name, "criticality": p.criticality,
+            "rto_hours": p.rto_hours,
+            "depends_on": [{"id": q, "name": pmap[q].name} for q in sorted(depends_on[p.id])],
+            "enables": [{"id": q, "name": pmap[q].name} for q in sorted(enables[p.id])],
+            "impact_count": len(imp),
+            "impact_names": [pmap[i].name for i in sorted(imp)][:20],
+        })
+    hubs = sorted([p for p in proc_out if p["impact_count"] > 0],
+                  key=lambda x: -x["impact_count"])[:10]
+
+    return {
+        "processes": proc_out,
+        "hubs": hubs,
+        "recovery_order": [{"id": pid, "name": pmap[pid].name,
+                            "rto_hours": pmap[pid].rto_hours} for pid in order],
+        "cycles": [[pmap[i].name for i in cyc] for cyc in cycles],
+        "critical_path": critical_path,
+        "has_process_deps": has_edges,
+        "total_processes": len(procs),
+    }
+
+
+def _find_cycles(depends_on: dict) -> list:
+    """Devuelve algunas listas de ids que forman ciclo (deteccion por DFS)."""
+    WHITE, GRAY, BLACK = 0, 1, 2
+    color = {n: WHITE for n in depends_on}
+    cycles, stack = [], []
+
+    def dfs(n):
+        color[n] = GRAY
+        stack.append(n)
+        for m in depends_on.get(n, ()):
+            if color.get(m) == GRAY:
+                if m in stack:
+                    cycles.append(stack[stack.index(m):] + [m])
+            elif color.get(m) == WHITE:
+                dfs(m)
+        stack.pop()
+        color[n] = BLACK
+
+    for n in depends_on:
+        if color[n] == WHITE:
+            dfs(n)
+    return cycles[:5]
