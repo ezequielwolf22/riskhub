@@ -6231,7 +6231,7 @@ const ViewBcp = (() => {
         ? '<button class="btn btn-ghost btn-xs" data-cmap-toggle="' + key + '" style="padding:0 4px">' + (collapsed ? '▸' : '▾') + '</button>'
         : '<span style="width:18px;display:inline-block"></span>')
       + '<span style="width:8px;height:8px;border-radius:50%;background:' + critC + ';flex-shrink:0"></span>'
-      + '<b style="font-size:13px">' + UI.esc(n.name) + '</b>'
+      + '<b style="font-size:13px"><a href="#" data-cmap-dossier="' + n.id + '" style="color:inherit;text-decoration:none;border-bottom:1px dotted var(--text-subtle)" title="' + UI.esc(t('bcp.dos_open')) + '">' + UI.esc(n.name) + '</a></b>'
       + '<span class="badge" style="font-size:9px;background:' + critC + '1f;color:' + critC + '">' + (_CMAP_CRIT[n.criticality] || n.criticality) + '</span>'
       + '<span style="font-size:11px;color:var(--text-muted)">' + _cmapRto(n) + '</span>'
       + (band ? '<span class="badge" style="font-size:9px;background:' + band.c + '1f;color:' + band.c + '">' + band.l + '</span>' : '')
@@ -6350,6 +6350,85 @@ const ViewBcp = (() => {
     });
     body.querySelectorAll('[data-cmap-edit]').forEach(b => {
       b.onclick = (ev) => { ev.stopPropagation(); _editProc(Number(b.dataset.cmapEdit)); };
+    });
+    body.querySelectorAll('[data-cmap-dossier]').forEach(a => {
+      a.onclick = (ev) => { ev.preventDefault(); ev.stopPropagation(); _openProcDossier(Number(a.dataset.cmapDossier)); };
+    });
+  }
+
+  // Fase 3: panel unico por proceso (dossier). Reune BIA, RTO efectivo,
+  // jerarquia, dependencias (y quien depende de el), escenarios, estrategias,
+  // planes, pruebas y hallazgos de coherencia en un solo sitio.
+  async function _openProcDossier(pid) {
+    let d;
+    try { d = await Api.get('/api/bcp/processes/' + pid + '/dossier'); }
+    catch (e) { UI.toast((e && e.message) || t('common.error'), 'error'); return; }
+    const critC = CRIT_COLORS[d.criticality] || '#6B7280';
+    const band = _CMAP_BAND[d.impact_band] || null;
+    const sec = (title, inner) => inner
+      ? '<div style="margin-bottom:16px"><div style="font-size:11px;font-weight:700;text-transform:uppercase;'
+        + 'letter-spacing:.05em;color:var(--text-subtle);margin-bottom:6px">' + UI.esc(title) + '</div>' + inner + '</div>'
+      : '';
+    const plink = (x) => '<a href="#" data-dossier="' + x.id + '" style="color:var(--brand-purple)">' + UI.esc(x.name) + '</a>';
+    const chips = (arr, fn) => arr && arr.length ? '<div style="display:flex;flex-wrap:wrap;gap:6px">' + arr.map(fn).join('') + '</div>' : '';
+
+    const rtoBox = '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;text-align:center;margin-bottom:14px">'
+      + [['RTO', d.rto_gap ? '<s style="color:var(--text-subtle)">' + _cmapH(d.declared_rto) + '</s> <b style="color:#EA580C">' + _cmapH(d.effective_rto) + '</b>' : _cmapH(d.declared_rto != null ? d.declared_rto : d.effective_rto)],
+         ['RPO', _cmapH(d.rpo_hours)], ['MTPD', _cmapH(d.mtpd_hours)], ['BIA', (d.bia_pct || 0) + '%']]
+        .map(([l, v]) => '<div style="background:var(--bg-2);border-radius:6px;padding:8px"><div style="font-size:14px;font-weight:700">' + v + '</div><div style="font-size:11px;color:var(--text-muted)">' + l + '</div></div>').join('')
+      + '</div>';
+
+    const findings = (d.findings || []).length
+      ? '<div class="notice notice-warn" style="margin-bottom:14px;font-size:12px"><b>' + UI.esc(t('bcp.dos_findings')) + '</b>'
+        + (d.findings || []).map(f => '<div style="margin-top:4px">• ' + UI.esc(f.message) + '</div>').join('') + '</div>'
+      : '';
+
+    let depsHtml = '';
+    Object.keys(d.dependencies || {}).forEach(ty => {
+      depsHtml += '<div style="margin-bottom:4px"><i class="ti ' + (DEP_ICONS[ty] || 'ti-circle') + '" style="margin-right:4px;color:var(--text-subtle)"></i><b style="font-size:12px">' + UI.esc(DEP_LABELS[ty] || ty) + '</b>'
+        + '<div style="margin-left:16px;font-size:12px">' + (d.dependencies[ty] || []).map(x =>
+          '<div>' + (x.is_critical ? '<span class="badge badge-danger" style="font-size:9px">crítica</span> ' : '')
+          + UI.esc(x.name || x.depends_on_process || '—')
+          + (x.depends_on_process ? ' <span style="color:var(--text-subtle)">→ ' + UI.esc(x.depends_on_process) + '</span>' : '')
+          + (x.rto_hours != null ? ' <span style="color:var(--text-subtle)">· RTO ' + _cmapH(x.rto_hours) + '</span>' : '') + '</div>').join('')
+        + '</div></div>';
+    });
+
+    const modal = document.createElement('div');
+    modal.className = 'modal-bg';
+    modal.innerHTML = '<div class="modal" style="max-width:760px;max-height:92vh;display:flex;flex-direction:column">'
+      + '<div class="modal-header" style="flex-shrink:0"><div>'
+      + '<h2 style="margin:0">' + UI.esc(d.name) + '</h2>'
+      + '<div style="font-size:12px;color:var(--text-subtle);margin-top:2px">'
+      + '<span class="badge" style="background:' + critC + '1f;color:' + critC + '">' + (_CMAP_CRIT[d.criticality] || d.criticality) + '</span> '
+      + (d.business_unit ? UI.esc(d.business_unit) + ' · ' : '')
+      + (band ? '<span class="badge" style="background:' + band.c + '1f;color:' + band.c + '">' + band.l + '</span> ' : '')
+      + (d.needs_review ? '<span class="badge badge-danger" style="font-size:9px">revisar</span>' : '')
+      + '</div></div>'
+      + '<button class="modal-close" onclick="this.closest(\'.modal-bg\').remove()">&#xd7;</button></div>'
+      + '<div class="modal-body" style="overflow-y:auto;flex:1;padding:20px 24px;display:block">'
+      + (d.description ? '<p style="font-size:13px;color:var(--text-muted);margin-top:0">' + UI.esc(d.description) + '</p>' : '')
+      + rtoBox + findings
+      + sec(t('bcp.dos_hierarchy'),
+          (d.parent ? '<div style="font-size:13px;margin-bottom:4px">' + t('bcp.dos_parent') + ': ' + plink(d.parent) + '</div>' : '')
+          + ((d.children || []).length ? '<div style="font-size:13px">' + t('bcp.dos_children') + ': ' + (d.children || []).map(plink).join(', ') + '</div>' : ''))
+      + sec(t('bcp.dos_deps'), depsHtml)
+      + sec(t('bcp.dos_depended_by'), chips(d.depended_on_by, x => '<span class="badge badge-muted">' + plink(x) + '</span>'))
+      + sec(t('bcp.dos_scenarios'), (d.scenarios || []).length ? '<div style="font-size:12px">' + d.scenarios.map(s =>
+          '<div>' + UI.esc(s.scenario_name || '—') + (s.impact_band ? ' <span class="badge badge-muted" style="font-size:9px">' + UI.esc((_CMAP_BAND[s.impact_band] || {}).l || s.impact_band) + '</span>' : '')
+          + (s.weighted_impact != null ? ' · ' + s.weighted_impact : '') + '</div>').join('') + '</div>' : '')
+      + sec(t('bcp.dos_strategies'), chips(d.strategies, s => '<span class="badge badge-muted">' + UI.esc(s.name) + '</span>'))
+      + sec(t('bcp.dos_plans'), chips(d.plans, p => '<span class="badge badge-muted">' + UI.esc((p.code ? p.code + ' · ' : '') + p.name) + '</span>'))
+      + sec(t('bcp.dos_tests'), chips(d.tests, t2 => '<span class="badge badge-muted">' + UI.esc((t2.code || t2.test_type || '') + (t2.result ? ' · ' + t2.result : '')) + '</span>'))
+      + '</div>'
+      + '<div class="modal-footer-sticky"><div style="margin-left:auto;display:flex;gap:8px">'
+      + '<button class="btn btn-sm" onclick="this.closest(\'.modal-bg\').remove()">' + t('common.close') + '</button>'
+      + '<button class="btn btn-primary btn-sm" id="dos-edit"><i class="ti ti-edit"></i> ' + t('bcp.dos_edit') + '</button>'
+      + '</div></div></div>';
+    document.body.appendChild(modal);
+    modal.querySelector('#dos-edit').onclick = () => { modal.remove(); _editProc(pid); };
+    modal.querySelectorAll('[data-dossier]').forEach(a => {
+      a.onclick = (ev) => { ev.preventDefault(); modal.remove(); _openProcDossier(Number(a.dataset.dossier)); };
     });
   }
 

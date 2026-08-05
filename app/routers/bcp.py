@@ -842,6 +842,17 @@ def impact_analysis(db: Session = Depends(get_db), u: User = Depends(get_current
     return build_impact_analysis(db, _org(u))
 
 
+@router.get("/processes/{pid}/dossier")
+def process_dossier(pid: int, db: Session = Depends(get_db), u: User = Depends(get_current_user)):
+    """Panel unico de un proceso: jerarquia, BIA, RTO efectivo, dependencias,
+    escenarios, estrategias, planes, pruebas y hallazgos, todo junto."""
+    from app.services.bcp_hierarchy_service import build_process_dossier
+    d = build_process_dossier(db, _org(u), pid)
+    if d is None:
+        raise HTTPException(404)
+    return d
+
+
 def _guard_parent_process(db, org: int, pid: int, parent_id: Optional[int], lang: str):
     """Evita que un proceso sea su propio ancestro (ciclo en la jerarquia)."""
     if parent_id is None:
