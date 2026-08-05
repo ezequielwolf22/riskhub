@@ -118,6 +118,30 @@ def _handle_ingest_pack(payload: dict) -> dict:
         cleanup_staging(payload.get("staging_dir"))
 
 
+def _handle_ingest_analyze(payload: dict) -> dict:
+    """(Re)analiza todos los documentos incluidos del registro de la org.
+
+    Los bytes ya estan persistidos: relanzar el analisis no necesita volver a
+    subir nada. `fresh` fuerza una lectura nueva (salta la cache por huella).
+    """
+    from app.database import SessionLocal
+    from app.services.ingest.pipeline import run_from_store
+
+    job_id = payload.get("_job_id")
+    cancel_check = (lambda: is_cancelled(job_id)) if job_id else None
+    db = SessionLocal()
+    try:
+        return run_from_store(
+            db, payload["org_id"], user_id=payload.get("user_id"), job_id=job_id,
+            tier=payload.get("tier", "deep"), lang=payload.get("lang", "es"),
+            apply_profile=bool(payload.get("apply_profile", True)),
+            use_cache=not bool(payload.get("fresh", False)),
+            cancel_check=cancel_check,
+        )
+    finally:
+        db.close()
+
+
 def _handle_bcp_ingest_document(payload: dict) -> dict:
     """F7 — encamina UN documento ya subido al motor de ingesta BCM.
 
@@ -157,6 +181,7 @@ _HANDLERS: dict[str, Callable[[dict], dict]] = {
     "evidence_analysis": _handle_evidence_analysis,
     "document_vision_isms": _handle_document_vision_isms,
     "ingest_pack": _handle_ingest_pack,
+    "ingest_analyze": _handle_ingest_analyze,
     "bcp_ingest_document": _handle_bcp_ingest_document,
 }
 

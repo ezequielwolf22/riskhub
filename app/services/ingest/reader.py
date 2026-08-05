@@ -285,8 +285,11 @@ def _read_pptx(data: bytes) -> tuple[list[dict], bool]:
         title = None
         for shape in slide.shapes:
             if shape.has_table:
+                # `_RowCollection` de python-pptx no soporta slicing: se
+                # materializa a lista y se acota despues.
+                table_rows = list(shape.table.rows)[:MAX_SHEET_ROWS]
                 rows = [[c.text.strip()[:MAX_CELL_CHARS] for c in row.cells]
-                        for row in shape.table.rows[:MAX_SHEET_ROWS]]
+                        for row in table_rows]
                 if rows:
                     blocks.append({"type": "table", "ref": f"slide:{i}#table",
                                    "section": title, "header": rows[0],

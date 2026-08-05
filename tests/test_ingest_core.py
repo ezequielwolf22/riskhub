@@ -24,7 +24,7 @@ from app.models import (BCMLocation, BCMScenario, BCMScenarioAssessment, BCPPlan
 from app.services.ingest import batch as batch_mod
 from app.services.ingest import conflicts as conflicts_mod
 from app.services.ingest import contracts
-from app.services.ingest.materializer import materialize
+from app.services.ingest.materializer import MaterializationResult, materialize
 from app.services.ingest.reconciler import find_match, normalize_name, similarity
 
 _ENGINE = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False})
@@ -274,6 +274,45 @@ def test_documentos_contradictorios_dejan_el_conflicto_registrado(db, bat):
     assert "DRP.docx" in fuentes
 
 
+def test_el_conflicto_cita_el_documento_real_del_valor_existente(db, bat):
+    """Subiendo todo de golpe, el valor 'ya cargado' lo puso otro documento del
+    pack: el conflicto debe citar ESE documento, no un generico."""
+    # El pipeline comparte un mismo result entre documentos: aqui igual.
+    result = MaterializationResult()
+    materialize(db, ORG, bat, "business_process",
+                [{"name": "Plataforma CAE", "rto_hours": 4}],
+                source_filename="BIA_Nalanda.xlsx", result=result)
+    db.commit()
+    materialize(db, ORG, bat, "business_process",
+                [{"name": "Plataforma CAE", "rto_hours": 6}],
+                source_filename="ISRT_03.docx", result=result)
+    db.commit()
+
+    conflict = db.query(IngestConflict).filter_by(
+        organization_id=ORG, field_name="rto_hours").one()
+    by_value = {c["value"]: c for c in conflict.candidates}
+    # El valor que ya estaba (4) lleva el documento que lo puso, no "valor ya cargado"
+    assert by_value[4]["source_filename"] == "BIA_Nalanda.xlsx"
+    assert by_value[6]["source_filename"] == "ISRT_03.docx"
+
+
+def test_valor_preexistente_sin_rastro_no_finge_un_documento(db, bat):
+    """Si el valor venia de una importacion anterior (sin procedencia en este
+    pack), el candidato va sin documento; la UI lo etiqueta aparte."""
+    db.add(BusinessProcess(organization_id=ORG, name="Portal CAE", rto_hours=8))
+    db.commit()
+    materialize(db, ORG, bat, "business_process",
+                [{"name": "Portal CAE", "rto_hours": 2}],
+                source_filename="DRP.docx", result=MaterializationResult())
+    db.commit()
+
+    conflict = db.query(IngestConflict).filter_by(
+        organization_id=ORG, field_name="rto_hours").one()
+    by_value = {c["value"]: c for c in conflict.candidates}
+    assert by_value[8]["source_filename"] is None       # sin fingir documento
+    assert by_value[2]["source_filename"] == "DRP.docx"
+
+
 # ── Deshacer y forzar ────────────────────────────────────────────────────────
 
 def test_deshacer_el_lote_deja_la_base_como_estaba(db, bat):
@@ -296,7 +335,9 @@ def test_deshacer_el_lote_deja_la_base_como_estaba(db, bat):
 
 
 def test_deshacer_restaura_el_valor_previo_de_lo_actualizado(db, bat):
-    db.add(BusinessProcess(organization_id=ORG, name="Facturacion", rto_hours=24))
+    # Un registro con un hueco (rto sin informar): la ingesta RELLENA el hueco,
+    # que es la unica forma en que una importacion cambia un registro existente.
+    db.add(BusinessProcess(organization_id=ORG, name="Facturacion"))
     db.commit()
 
     materialize(db, ORG, bat, "business_process",
@@ -306,7 +347,7 @@ def test_deshacer_restaura_el_valor_previo_de_lo_actualizado(db, bat):
 
     batch_mod.undo_batch(db, bat)
     p = db.query(BusinessProcess).filter_by(organization_id=ORG).one()
-    assert p.rto_hours == 24   # el valor original, no borrado ni pisado
+    assert p.rto_hours is None   # vuelve al hueco original, no se inventa nada
 
 
 def test_revertir_un_solo_registro(db, bat):
@@ -386,3 +427,42 @@ def test_los_objetivos_de_recuperacion_ganan_por_el_mas_exigente():
         fmap = contracts.get(key).field_map()
         for fname in fields:
             assert fmap[fname].conflict_policy == "min", f"{key}.{fname}"
+
+
+# ── Lectura de documentos ────────────────────────────────────────────────────
+
+def test_pptx_con_tabla_se_lee_sin_romperse():
+    """Regresion: `_RowCollection` de python-pptx no soporta slicing.
+
+    Los packs de crisis suelen traer medios alternativos y escalado como
+    presentacion con tablas; antes cualquier PPTX con tabla tumbaba el lector.
+    """
+    import io
+
+    from pptx import Presentation
+    from pptx.util import Inches
+
+    from app.services.ingest import reader
+
+    prs = Presentation()
+    s1 = prs.slides.add_slide(prs.slide_layouts[1])
+    s1.shapes.title.text = "Escalado de crisis"
+    s1.placeholders[1].text = "Nivel alto: Comite de crisis"
+    s2 = prs.slides.add_slide(prs.slide_layouts[5])
+    s2.shapes.title.text = "Medios alternativos"
+    tbl = s2.shapes.add_table(2, 3, Inches(0.5), Inches(1.5),
+                              Inches(9), Inches(1.5)).table
+    for j, h in enumerate(["Medio", "Transicion", "Tiempo"]):
+        tbl.cell(0, j).text = h
+    tbl.cell(1, 0).text = "Trabajo remoto"
+    tbl.cell(1, 1).text = "Manual"
+    tbl.cell(1, 2).text = "120 minutos"
+    buf = io.BytesIO()
+    prs.save(buf)
+
+    doc = reader.read_document(buf.getvalue(), "crisis.pptx")
+    assert doc["format"] == "pptx"
+    tables = [b for b in doc["blocks"] if b.get("type") == "table"]
+    assert tables, "la tabla de la diapositiva deberia extraerse"
+    assert tables[0]["header"] == ["Medio", "Transicion", "Tiempo"]
+    assert ["Trabajo remoto", "Manual", "120 minutos"] in tables[0]["rows"]

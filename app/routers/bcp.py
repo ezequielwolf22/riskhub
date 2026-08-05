@@ -123,6 +123,12 @@ def _proc_d(p: BusinessProcess) -> dict:
         "bia_version": getattr(p, "bia_version", None),
         "bia_review_date": p.bia_review_date.isoformat() if getattr(p, "bia_review_date", None) else None,
         "location_id": getattr(p, "location_id", None),
+        "parent_process_id": getattr(p, "parent_process_id", None),
+        "business_unit": getattr(p, "business_unit", None),
+        # BIA dirigido por el metodo del cliente
+        "impacts": getattr(p, "impacts", None),
+        "weighted_impact": getattr(p, "weighted_impact", None),
+        "impact_band": getattr(p, "impact_band", None),
         "created_at": p.created_at.isoformat() if p.created_at else None,
     }
 
@@ -303,6 +309,11 @@ class ProcessIn(BaseModel):
     impact_7d: Optional[int] = None
     bia_version: Optional[str] = None
     bia_review_date: Optional[str] = None
+    location_id: Optional[int] = None
+    parent_process_id: Optional[int] = None
+    business_unit: Optional[str] = None
+    # BIA dirigido por el metodo del cliente: {dimension: {horizonte: nivel}}
+    impacts: Optional[dict] = None
 
 
 class ProcessUpdate(BaseModel):
@@ -336,6 +347,10 @@ class ProcessUpdate(BaseModel):
     impact_7d: Optional[int] = None
     bia_version: Optional[str] = None
     bia_review_date: Optional[str] = None
+    location_id: Optional[int] = None
+    parent_process_id: Optional[int] = None
+    business_unit: Optional[str] = None
+    impacts: Optional[dict] = None
 
 
 class DepIn(BaseModel):
@@ -666,10 +681,18 @@ def create_process(body: ProcessIn, request: Request, db: Session = Depends(get_
     if body.criticality not in VALID_CRITICALITY:
         raise HTTPException(422, _t("bcp.invalid_criticality_valid", get_lang(request), valid=VALID_CRITICALITY))
     org = _org(u)
+    if body.parent_process_id is not None:
+        parent = db.get(BusinessProcess, body.parent_process_id)
+        if not parent or parent.organization_id != org:
+            raise HTTPException(422, "Proceso padre invalido.")
     # GDPR: escalation_contacts puede contener nombre, email y teléfono (datos personales).
     # Base legal: Art. 6(1)(f) RGPD — interés legítimo (continuidad del negocio).
     # Los datos solo deben ser de empleados de la organización.
     p = BusinessProcess(organization_id=org, **body.model_dump())
+    # BIA dirigido por el metodo del cliente: el impacto ponderado y la banda
+    # los calcula el motor determinista, nunca se aceptan del cliente.
+    from app.services.bcm_scenario_engine import get_criteria, recompute_process
+    recompute_process(p, get_criteria(db, org))
     db.add(p)
     db.commit()
     db.refresh(p)
@@ -693,11 +716,22 @@ def update_process(pid: int, body: ProcessUpdate, request: Request, db: Session 
         raise HTTPException(404)
     if body.criticality and body.criticality not in VALID_CRITICALITY:
         raise HTTPException(422, _t("bcp.invalid_criticality", get_lang(request)))
+    _sent = body.model_dump(exclude_unset=True)
+    if "parent_process_id" in _sent:
+        _guard_parent_process(db, _org(u), pid, _sent["parent_process_id"], get_lang(request))
     # GDPR: escalation_contacts puede contener datos personales (Art. 6(1)(f) RGPD).
     for k, v in body.model_dump(exclude_none=True).items():
         if k == "bia_review_date":
             v = _parse_dt(v, "bia_review_date")
         setattr(p, k, v)
+    # parent_process_id se trata aparte: enviar null lo desvincula (exclude_none
+    # lo habria descartado). El resto del PATCH conserva su semantica de siempre.
+    if "parent_process_id" in _sent:
+        p.parent_process_id = _sent["parent_process_id"]
+    # Recalcular impacto ponderado y banda con el metodo vigente si cambio la
+    # valoracion o el RTO (el motor decide, no la vista).
+    from app.services.bcm_scenario_engine import get_criteria, recompute_process
+    recompute_process(p, get_criteria(db, _org(u)))
     db.commit()
     # ENS op.cont.1 + ISO 27001 A.5.29 cuando BIA alcanza >= 80%
     from app.services.bcp_service import bia_completeness as _bia
@@ -727,6 +761,121 @@ def list_deps(process_id: Optional[int] = None, db: Session = Depends(get_db),
     if process_id:
         q = q.filter_by(process_id=process_id)
     return [_dep_d(d) for d in q.all()]
+
+
+@router.get("/dependency-tree")
+def dependency_tree(db: Session = Depends(get_db), u: User = Depends(get_current_user)):
+    """Arbol Sede -> Proceso -> Dependencias (categorias ISO/TS 22317).
+
+    Fuente del mapa navegable: cada sede con sus procesos, y cada proceso con sus
+    dependencias agrupadas por tipo (sistemas/apps, proveedores, personas,
+    instalaciones, comunicaciones, otros procesos). Los procesos sin sede van en
+    "unassigned" para que no se pierdan.
+    """
+    org = u.organization_id
+    if not org:
+        return {"locations": [], "unassigned": [], "totals": {}}
+    from app.services.bcp_service import bia_completeness
+    locs = db.query(BCMLocation).filter_by(organization_id=org).all()
+    procs = db.query(BusinessProcess).filter_by(organization_id=org).all()
+    deps = db.query(BCPDependency).filter_by(organization_id=org).all()
+
+    deps_by_proc: dict = {}
+    for d in deps:
+        deps_by_proc.setdefault(d.process_id, []).append(d)
+    proc_name = {p.id: p.name for p in procs}
+
+    def _proc_node(p):
+        try:
+            bia = bia_completeness(None, p)["pct"]
+        except Exception:
+            bia = 0
+        grouped: dict = {}
+        for d in deps_by_proc.get(p.id, []):
+            grouped.setdefault(d.dependency_type or "other", []).append({
+                "id": d.id, "name": d.name, "is_critical": bool(d.is_critical),
+                "rto_hours": d.rto_hours,
+                "depends_on_process": proc_name.get(d.depends_on_process_id),
+            })
+        return {
+            "id": p.id, "name": p.name, "criticality": p.criticality,
+            "rto_hours": p.rto_hours, "mtpd_hours": p.mtpd_hours, "bia_pct": bia,
+            "dependencies": grouped, "dep_count": len(deps_by_proc.get(p.id, [])),
+        }
+
+    procs_by_loc: dict = {}
+    unassigned = []
+    for p in procs:
+        if p.location_id:
+            procs_by_loc.setdefault(p.location_id, []).append(p)
+        else:
+            unassigned.append(p)
+
+    location_nodes = [{
+        "id": loc.id, "name": loc.name,
+        "city": getattr(loc, "city", None), "country": getattr(loc, "country", None),
+        "processes": [_proc_node(p) for p in procs_by_loc.get(loc.id, [])],
+        "process_count": len(procs_by_loc.get(loc.id, [])),
+    } for loc in locs]
+
+    return {
+        "locations": location_nodes,
+        "unassigned": [_proc_node(p) for p in unassigned],
+        "totals": {"locations": len(locs), "processes": len(procs),
+                   "dependencies": len(deps)},
+    }
+
+
+@router.get("/continuity-map")
+def continuity_map(db: Session = Depends(get_db), u: User = Depends(get_current_user)):
+    """Mapa de continuidad: jerarquia real (sede anidada -> unidad -> proceso ->
+    subproceso -> dependencias) con RTO efectivo y hallazgos de coherencia."""
+    from app.services.bcp_hierarchy_service import build_continuity_map
+    return build_continuity_map(db, _org(u))
+
+
+@router.get("/impact-analysis")
+def impact_analysis(db: Session = Depends(get_db), u: User = Depends(get_current_user)):
+    """Grafo proceso->proceso: propagacion de impacto, orden de recuperacion,
+    camino critico por RTO y ciclos."""
+    from app.services.bcp_hierarchy_service import build_impact_analysis
+    return build_impact_analysis(db, _org(u))
+
+
+@router.get("/processes/{pid}/dossier")
+def process_dossier(pid: int, db: Session = Depends(get_db), u: User = Depends(get_current_user)):
+    """Panel unico de un proceso: jerarquia, BIA, RTO efectivo, dependencias,
+    escenarios, estrategias, planes, pruebas y hallazgos, todo junto."""
+    from app.services.bcp_hierarchy_service import build_process_dossier
+    d = build_process_dossier(db, _org(u), pid)
+    if d is None:
+        raise HTTPException(404)
+    return d
+
+
+def _guard_parent_process(db, org: int, pid: int, parent_id: Optional[int], lang: str):
+    """Evita que un proceso sea su propio ancestro (ciclo en la jerarquia)."""
+    if parent_id is None:
+        return
+    if parent_id == pid:
+        raise HTTPException(422, _t("bcp.parent_self", lang) if _has_key("bcp.parent_self", lang)
+                            else "Un proceso no puede ser su propio padre.")
+    seen = {pid}
+    cur = db.get(BusinessProcess, parent_id)
+    while cur is not None:
+        if cur.organization_id != org:
+            raise HTTPException(422, "Proceso padre invalido.")
+        if cur.id in seen:
+            raise HTTPException(422, "La jerarquia de procesos no puede tener ciclos.")
+        seen.add(cur.id)
+        cur = db.get(BusinessProcess, cur.parent_process_id) if cur.parent_process_id else None
+
+
+def _has_key(key: str, lang: str) -> bool:
+    try:
+        return _t(key, lang) != key
+    except Exception:
+        return False
 
 
 @router.post("/dependencies", status_code=201)
@@ -1441,6 +1590,30 @@ def export_bcp_excel(request: Request, db: Session = Depends(get_db), u: User = 
         content=content,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": "attachment; filename=BCP_datos.xlsx"},
+    )
+
+
+@router.get("/export/word")
+def export_bcp_word(request: Request, sections: Optional[str] = None,
+                    db: Session = Depends(get_db), u: User = Depends(get_current_user)):
+    """Informe BCP en Word (.docx) editable.
+
+    `sections` es una lista separada por comas (status,bia,scenarios,strategies,
+    plans,tests,suppliers,dependencies) o vacia/"all" para el informe completo.
+    """
+    org = _org(u, get_lang(request))
+    from app.models import Organization
+    from app.services.bcp_word_service import generate_bcp_word, normalize_sections
+    org_row = db.get(Organization, org)
+    org_name = org_row.name if org_row else "Organizacion"
+    sects = normalize_sections(sections)
+    content = generate_bcp_word(db, org, org_name=org_name, sections=sects)
+    fname = "Informe_BCP.docx" if len(sects) > 1 else ("BCP_%s.docx" % sects[0])
+    log_action(db, u.id, "export", "bcp_word", ",".join(sects), {})
+    return Response(
+        content=content,
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        headers={"Content-Disposition": "attachment; filename=%s" % fname},
     )
 
 
@@ -3654,6 +3827,9 @@ class BIACriteriaIn(BaseModel):
     rto_scale: Optional[list] = None
     bands: Optional[list] = None
     aggregation: Optional[str] = None
+    # Combinacion impacto/RTO: "product" (impacto x factor) o "sum"
+    # (RTO + criterio = impacto total). Cambia la cifra por completo.
+    combination: Optional[str] = None
 
 
 def _scenario_d(s) -> dict:

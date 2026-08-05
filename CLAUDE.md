@@ -140,16 +140,72 @@ Multi-usuario con roles.
 - [ ] Pruebas end-to-end manuales de las vistas nuevas con usuario real
 - [ ] Backlog del modulo Plan Director/Tratamiento: priorizado en `RISKHUB_TREATMENT_MODULE_SPEC.md` (seccion "Backlog de mejoras") — no construir hasta validar con uso real
 
-Deploy: prod (91.99.83.202) actualizado a commit d63bde5 el 2026-07-24 — ingesta
-cognitiva BCP (escenarios/BIA por sede, motor de ingesta, comprension IA,
-generacion sin documentos), modulo Metodo de la organizacion (registro,
-formulas acotadas, extraccion con cita, conformidad) y diagnostico SharePoint.
-Las 11 tablas nuevas migradas y verificadas en prod, routers /api/method,
-/api/ingest y /api/bcp/scenarios respondiendo, cero errores de arranque. Backup
-pre-deploy verificado; rollback: `bash scripts/rollback.sh riskhub:20260724_093130`.
+Deploy: prod (91.99.83.202) el 2026-08-05 — Fases 3 y 4 del rework del BCP.
+Fase 4 (ingesta reconstruye jerarquia): el motor de ingesta ya no vuelca procesos
+planos. `business_process` gana `business_unit` y `parent_process_id` (referencia
+a otro proceso del lote por nombre); `bcp_dependency` gana `depends_on_process_id`
+(dependencia proceso->proceso). El materializador ordena topologicamente las
+entidades autorreferenciadas (`_sort_self_referential`), asi un subproceso listado
+antes que su padre encuentra al padre igual; con proteccion de ciclos. La pasada 2
+de comprension guia al modelo para deducir unidad de negocio, macro-proceso ->
+proceso -> actividad y dependencias proceso->proceso (EXTRACTION_PROMPT_VERSION 5,
+invalida la cache de extracciones previas). Tests test_ingest_hierarchy.py.
+Fase 3 (dossier): `bcp_hierarchy_service.build_process_dossier` +
+`GET /api/bcp/processes/{id}/dossier` reune RTO efectivo vs declarado, avisos de
+coherencia, jerarquia (padre/subprocesos navegables), dependencias por categoria,
+procesos que dependen de este, escenarios, estrategias, planes y pruebas. En el
+Mapa de continuidad los nombres de proceso abren su ficha. Tests
+test_bcp_process_dossier.py. Deploy previo 2026-08-03 — Fase 2 del rework del BCP: grafo de
+dependencias proceso->proceso. `bcp_hierarchy_service.build_impact_analysis` +
+`GET /api/bcp/impact-analysis`: propagacion de impacto transitiva (si cae X,
+afecta a N procesos), orden de recuperacion (Kahn), camino critico por RTO (DP
+sobre el topologico) y deteccion de ciclos. Panel "Analisis de impacto" en el
+tile de dependencias (hubs expandibles, camino critico, ciclos). Tests
+test_bcp_impact_analysis.py. Pendiente: Fase 3 (panel unico por proceso) y Fase
+4 (ingesta reconstruye jerarquia). Deploy previo 2026-08-02 — Fase 1 del rework del BCP
+(jerarquia real + precision, pedido por el usuario que no veia la jerarquia de
+procesos/dependencias). BusinessProcess gana `parent_process_id` (macro-proceso
+-> proceso -> actividad) y `business_unit`; `location_id` ya se asigna al
+crear/editar (faltaba en el schema). Nuevo `bcp_hierarchy_service` +
+`GET /api/bcp/continuity-map`: arbol Sede(anidada) -> Unidad -> Proceso ->
+Subproceso -> Dependencias, con RTO EFECTIVO propagado (un proceso no se
+recupera antes que su dependencia critica mas lenta) y hallazgos de coherencia
+(RTO>MTPD, subproceso mas exigente que el padre, dependencia critica mas lenta
+que el proceso, critico sin estrategia/plan/prueba, sin sede) + procedencia por
+nodo. Nuevo tile "Mapa de continuidad" en el hub BCP; formulario de proceso con
+sede/unidad/proceso-padre. Guarda anti-ciclo. Tests test_bcp_continuity_map.py.
+Pendiente de este rework: Fase 2 (grafo de dependencias con propagacion) y
+Fase 3 (panel unico por proceso). Deploy previo 2026-07-28 — revision UX GLOBAL de la pagina de
+ingesta: orden accion-primero (conflictos -> datos por revisar -> huecos ->
+"Que encontro" plegado por defecto como referencia -> avisos); stats de
+conflictos/dudas clicables que saltan a su seccion; conflictos lado a lado en
+rejilla con ambos documentos y su punto exacto, mas acciones en bloque
+("preferir documento X" donde difiera, "aceptar todas las automaticas");
+"Datos por revisar" con aceptacion en bloque (visibles / alta confianza /
+todos los de una entidad). Todo en local sin re-fetch (conserva scroll y
+colapsos). Deploy previo ccc0264 — el conflicto de
+la ingesta cita AMBOS documentos y su punto exacto: el materializador guarda
+procedencia por campo (documento + origen) segun escribe, asi que el valor "ya
+cargado" (que lo puso otro documento del mismo pack) se muestra con su
+documento real; si venia de una importacion anterior, se etiqueta "valor que
+ya estaba" en vez de fingir un documento. Deploy previo 1ecb721 — arreglo de
+UX de la vista de revision de la ingesta: aceptar/deshacer/rehacer/editar/
+resolver conflicto actualizan en local y re-renderizan preservando el scroll
+(se acabo el salto arriba y la perdida de colapsos); las secciones grandes (Que
+encontro, Datos dudosos, conflictos) son colapsables como un todo con estado
+persistente + barra sticky para saltar entre ellas y colapsar/expandir todo.
+Deploy previo d5d70f2 (fix de `organizations.py`: borrado permanente por
+introspeccion real del esquema via `Base.metadata` con SAVEPOINT por tabla,
+fin del `FOREIGN KEY constraint failed`). Antes, ca15b1a habia traido el
+refinamiento completo de la ingesta BCP (cache SHA-256, deshacer/rehacer,
+documentacion dinamica, consolidacion ISO 22317, arbol de dependencias, export
+a Word, BIA por proceso dirigido por el metodo del cliente, PPTX con tablas,
+pasada 2 en paralelo). Health check OK, backup pre-deploy verificado; rollback:
+`bash scripts/rollback.sh riskhub:20260728_141901`.
 **Pendiente**: validacion end-to-end contra la API real con el pack de OFA en
-una org de prueba aislada (credito de API ya recargado). Deploy previo estable
-en v6.3.0/bd068c2 (2026-07-18, Plan Director/Tratamiento).
+una org de prueba aislada (credito de API ya recargado). **Recordatorio para
+quien deployee**: actualizar esta nota en el mismo commit del deploy, no
+despues — asi no se repite el desfase de esta vez.
 
 ## Convenciones
 

@@ -20,7 +20,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from app.services.ingest import batch as batch_mod
-from app.services.ingest import comprehension, contracts, reader
+from app.services.ingest import comprehension, consolidation, contracts, reader
 from app.services.ingest.materializer import MaterializationResult, materialize
 
 logger = logging.getLogger("riskhub.ingest.pipeline")
@@ -133,15 +133,33 @@ def run_pack(db, org_id: Optional[int], files: list[tuple[str, bytes]], *,
         # igual que el perfil.
         method_summary = _extract_method(db, org_id, documents, bat, lang, warnings)
 
-        # ── Pasada 2 y 3: mapa por documento y volcado ───────────────────
+        # ── Pasada 2: mapa por documento (en PARALELO) ───────────────────
+        # La lectura comprensiva de cada documento es una llamada al modelo
+        # independiente de las demas: es lo que dominaba el tiempo (un pack de
+        # 15 documentos con Opus tardaba ~22 min en serie). Se lanzan en
+        # paralelo con una sesion de BD propia por hilo. El anclaje incremental
+        # al catalogo se pierde, pero la consolidacion posterior funde las
+        # variantes igual, asi que el resultado final no cambia.
+        _check_cancel(cancel_check)
+        maps_by_name = _source_maps_parallel(
+            org_id, documents, profile_data, lang, tier, use_cache)
+
+        # ── Pasada 3: volcado (en SERIE, orden original) ─────────────────
+        # La materializacion toca la BD y reconcilia contra lo ya escrito: debe
+        # ir en serie y con la sesion principal, en el orden de los documentos.
         file_reports = []
         for doc in documents:
             _check_cancel(cancel_check)
             report = {"filename": doc["filename"], "format": doc["format"]}
+            smap, build_exc = maps_by_name.get(doc["filename"], (None, None))
+            if build_exc is not None:
+                logger.warning("ingest: fallo leyendo %s: %s", doc["filename"],
+                               build_exc, exc_info=build_exc)
+                report.update({"status": "failed", "error": str(build_exc)[:300]})
+                warnings.append(f"{doc['filename']}: {build_exc}")
+                file_reports.append(report)
+                continue
             try:
-                smap = comprehension.build_source_map(
-                    db, org_id, doc, profile=profile_data, lang=lang, tier=tier,
-                    use_cache=use_cache)
                 map_row = _save_source_map(db, org_id, bat, smap)
                 report.update({
                     "doc_kind": smap.get("doc_kind"),
@@ -161,6 +179,20 @@ def run_pack(db, org_id: Optional[int], files: list[tuple[str, bytes]], *,
                 warnings.append(f"{doc['filename']}: {exc}")
             file_reports.append(report)
 
+        # ── Consolidacion: fundir las variantes de escenario en su canonico ──
+        # Leer documento a documento genera variantes del mismo escenario
+        # (AWS/GCP/OVH, ingles/espanol, redacciones). Aqui, con todo ya extraido,
+        # se agrupan en el catalogo canonico antes de recalcular.
+        consol = {}
+        try:
+            _check_cancel(cancel_check)
+            consol = consolidation.consolidate_scenarios(db, org_id, lang=lang,
+                                                         tier=tier)
+        except PackCancelled:
+            raise
+        except Exception as exc:
+            warnings.append(f"No se pudieron consolidar los escenarios: {exc}")
+
         # ── Verificacion: recalcular y declarar huecos ───────────────────
         gaps = _verify(db, org_id, warnings)
 
@@ -169,6 +201,7 @@ def run_pack(db, org_id: Optional[int], files: list[tuple[str, bytes]], *,
             "linked": result.linked, "needs_review": result.needs_review,
             "conflicts": result.conflicts, "skipped": result.skipped[:50],
             "gaps": gaps, "method": method_summary,
+            "scenario_consolidation": consol,
         })
         bat.files = file_reports
         warnings.extend(result.warnings)
@@ -182,9 +215,101 @@ def run_pack(db, org_id: Optional[int], files: list[tuple[str, bytes]], *,
         return _finish(db, bat, summary, warnings + [str(exc)[:300]], status="failed")
 
 
+def run_from_store(db, org_id: Optional[int], *, user_id: Optional[int] = None,
+                   job_id: Optional[int] = None, tier: str = "deep",
+                   lang: str = "es", apply_profile: bool = True,
+                   use_cache: bool = True, cancel_check=None) -> dict:
+    """Analiza TODOS los documentos incluidos del registro de la organizacion.
+
+    Es lo que permite relanzar el analisis en cualquier momento: coge lo que el
+    usuario tiene marcado para analizar, lo pasa por el pipeline y sella el
+    estado de cada documento. Como la ingesta refleja y no pisa, y la lectura se
+    cachea por huella, reanalizar es seguro y barato: no duplica ni sobrescribe.
+    """
+    from app.models import IngestBatch
+    from app.services.ingest import document_store as store
+
+    docs = store.included_documents(db, org_id)
+    files, doc_by_name = [], {}
+    for row in docs:
+        data = store.load_bytes(row)
+        if data is None:
+            continue
+        files.append((row.filename, data))
+        doc_by_name[row.filename] = row
+
+    if not files:
+        return {"batch_id": None, "status": "failed",
+                "warnings": ["No hay documentos incluidos para analizar."]}
+
+    out = run_pack(db, org_id, files, user_id=user_id, job_id=job_id, tier=tier,
+                   lang=lang, apply_profile=apply_profile, use_cache=use_cache,
+                   cancel_check=cancel_check)
+
+    # Sellar el resultado en cada documento del registro.
+    bat = db.get(IngestBatch, out.get("batch_id")) if out.get("batch_id") else None
+    reports = {r.get("filename"): r for r in ((bat.files if bat else None) or [])}
+    for name, row in doc_by_name.items():
+        store.mark_analyzed(db, row, out.get("batch_id"),
+                            reports.get(name, {"status": "ok"}))
+    db.commit()
+    return out
+
+
 def _check_cancel(cancel_check) -> None:
     if cancel_check and cancel_check():
         raise PackCancelled()
+
+
+def _ingest_concurrency(n_docs: int) -> int:
+    """Hilos para la pasada 2. Acotado para respetar el rate limit del modelo
+    y la escritura serializada de SQLite. Configurable por entorno."""
+    import os
+    try:
+        want = int(os.environ.get("RISKHUB_INGEST_CONCURRENCY", "4"))
+    except (TypeError, ValueError):
+        want = 4
+    return max(1, min(want, n_docs or 1))
+
+
+def _source_maps_parallel(org_id, documents, profile_data, lang, tier,
+                          use_cache) -> dict:
+    """Computa el mapa de volcado de cada documento en paralelo.
+
+    Cada hilo usa su PROPIA sesion de BD (las sesiones de SQLAlchemy no son
+    thread-safe); el resultado es un dict plano, seguro de devolver. La
+    materializacion, que si toca la BD compartida, se queda fuera y en serie.
+    Devuelve {filename: (smap | None, exc | None)}.
+    """
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    from app.database import SessionLocal
+
+    def _one(doc):
+        tdb = SessionLocal()
+        try:
+            smap = comprehension.build_source_map(
+                tdb, org_id, doc, profile=profile_data, lang=lang, tier=tier,
+                use_cache=use_cache)
+            return doc["filename"], smap, None
+        except Exception as exc:  # se reporta por documento, no tumba el pack
+            return doc["filename"], None, exc
+        finally:
+            tdb.close()
+
+    workers = _ingest_concurrency(len(documents))
+    out: dict = {}
+    if workers == 1:
+        for doc in documents:
+            name, smap, exc = _one(doc)
+            out[name] = (smap, exc)
+        return out
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        futures = [pool.submit(_one, doc) for doc in documents]
+        for fut in as_completed(futures):
+            name, smap, exc = fut.result()
+            out[name] = (smap, exc)
+    return out
 
 
 def _finish(db, bat, summary: dict, warnings: list, status: str) -> dict:

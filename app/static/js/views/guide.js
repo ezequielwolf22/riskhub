@@ -2814,6 +2814,11 @@ const ViewGuide = {
     ${this._p('Muestra el estado global del SGCN con 23 cláusulas ISO 22301:2019. Cada cláusula tiene estado <em>implementado / parcial / gap</em>, detalle y referencia normativa. El porcentaje global indica madurez del sistema. Usa el boton <strong>Analizar gaps con IA</strong> para obtener un informe ejecutivo con referencias a ISO 22301, ISO 27001 A.5.29/A.5.30, ENS y NIS2.')}
     ${this._warn('<strong>Atención:</strong> El boton "Analizar con IA" consume tokens de la API de Claude. Solo usarlo manualmente cuando necesites el informe de auditor.')}
 
+    ${this._h('Mapa de continuidad (jerarquía real)')}
+    ${this._p('El tile <strong>Mapa de continuidad</strong> muestra la jerarquía real del BCP como un árbol colapsable: <strong>Sede</strong> (anidada por sede padre) → <strong>Unidad de negocio</strong> → <strong>Proceso</strong> → <strong>Subproceso</strong> → <strong>Dependencias</strong>. Cada proceso indica su criticidad, RTO, banda de impacto, % BIA y procedencia (importado / revisar / confianza).')}
+    ${this._p('Dos cosas clave para la <strong>precisión</strong>: (1) el <strong>RTO efectivo</strong> — un proceso no se recupera antes que su dependencia crítica más lenta, así que si su RTO declarado es 4h pero necesita un sistema con RTO 24h, se muestra <s>4h</s> <strong>24h</strong>; (2) los <strong>avisos de coherencia</strong> — contradicciones que delatan datos imprecisos (RTO&gt;MTPD, subproceso más exigente que su padre, dependencia crítica más lenta que el proceso, crítico sin estrategia/plan/prueba, proceso sin sede). Todo lo calcula el motor determinista del servidor, nunca la vista ni un LLM.')}
+    ${this._tip('La jerarquía se construye asignando a cada proceso su <strong>sede</strong>, su <strong>unidad de negocio</strong> y, si procede, su <strong>proceso padre</strong> en el formulario del proceso. La ingesta documental también la puebla.')}
+
     ${this._h('Tab Procesos Críticos')}
     ${this._p('Tabla de todos los procesos con criticidad, RTO/RPO/MTPD, % BIA completado y conteo de dependencias. Usa el buscador y el filtro de criticidad para navegar en organizaciones con muchos procesos. Haz clic en <strong>Editar</strong> para abrir el formulario completo con 6 secciones:')}
     <ul style="font-size:13px;padding-left:20px;margin:0 0 14px;">
@@ -2825,8 +2830,9 @@ const ViewGuide = {
     </ul>
 
     ${this._h('Tab BIA (Análisis de Impacto)')}
-    ${this._p('Vista de tarjetas con el estado BIA de cada proceso: métricas RTO/RPO/MTPD/MBCO, badges de impacto por dimensión y barra de completitud. El color indica estado: verde >= 80%, naranja >= 50%, rojo < 50%. Un proceso con BIA >= 80% contribuye al cumplimiento de ISO 22301 cl. 8.2 y ENS op.cont.1.')}
-    ${this._tip('Para facilitar la auditoría, ISO 22301 cl. 8.2 requiere que al menos el 80% de los procesos críticos (criticidad "critica" o "alta") tengan BIA completo.')}
+    ${this._p('Vista de tarjetas con el estado BIA de cada proceso, <strong>dirigida por el método declarado de tu organización</strong>: el banner superior muestra las dimensiones de impacto, la combinación (impacto × factor de RTO, o "RTO + criterio = impacto total") y avisa si aún usas el baremo de referencia. El botón <strong>"Editar método"</strong> lleva al editor de criterios (dimensiones, horizontes, niveles, baremo RTO y bandas) — todo editable y transferible a cualquier organización.')}
+    ${this._p('Cada tarjeta muestra RTO/RPO/MTPD, el <strong>impacto ponderado y su banda</strong> (calculados por el mismo motor determinista del servidor, nunca editables a mano ni propuestos por un LLM), un chip por cada dimensión del método con su peor nivel, y la barra de completitud. El botón <strong>"Valorar impacto"</strong> abre una rejilla dimensión × horizonte para valorar el proceso con las dimensiones de tu método.')}
+    ${this._tip('Para facilitar la auditoría, ISO 22301 cl. 8.2 requiere que al menos el 80% de los procesos críticos (criticidad "critica" o "alta") tengan BIA completo. El método del BIA por proceso y el de escenarios es el mismo (BIACriteria): cambiarlo recalcula ambos.')}
 
     ${this._h('Tab Escenarios (BIA por escenario y sede)')}
     ${this._p('El BIA canónico de ISO 22301 gira sobre <em>procesos</em>, pero muchas organizaciones lo construyen sobre <strong>escenarios de indisponibilidad valorados en cada sede</strong>. Ambos modelos conviven en la plataforma: el tab Escenarios (dentro del paso "Procesos y BIA" del modo Configurar) es la entrada a ese segundo modelo. Hay cuatro familias de escenario: <strong>personal</strong>, <strong>sistemas y comunicaciones</strong>, <strong>terceros</strong> e <strong>instalaciones</strong>.')}
@@ -2992,7 +2998,8 @@ const ViewGuide = {
       <li><strong>Plantilla estandar:</strong> usa la plantilla descargable con las columnas exactas que espera el sistema. Valida la estructura antes de importar y muestra una vista previa.</li>
       <li><strong>Cualquier formato (IA):</strong> sube un Excel propio. Claude analizara la estructura, identificara las columnas BCP aunque no coincidan exactamente, y mapeara los datos. Ideal para importar BIAs existentes o datos de otras herramientas.</li>
     </ul>
-    ${this._p('La exportación genera un Excel con 5 hojas: procesos, dependencias, estrategias, planes y tests.')}
+    ${this._p('La exportación a <strong>Excel</strong> genera un libro con 5 hojas: procesos, dependencias, estrategias, planes y tests.')}
+    ${this._p('La exportación a <strong>Word (.docx)</strong> genera un informe editable con la paleta de marca. Puedes descargar el <strong>informe completo</strong> o una sección suelta: estado del SGCN, BIA (con el método declarado de tu organización: dimensiones, baremo RTO y bandas), escenarios de indisponibilidad, estrategias/DRP, planes, pruebas, proveedores críticos y dependencias. Pensado para entregar a auditoría o dirección y retocar en Word.')}
 
     ${this._h('Integraciones automaticas (sin IA)')}
     <ul style="font-size:13px;padding-left:20px;margin:0 0 14px;">

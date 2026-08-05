@@ -2961,6 +2961,18 @@ class BusinessProcess(Base):
     bia_version = Column(String(16), nullable=True)        # Version del BIA (ej. "v1.0")
     bia_review_date = Column(DateTime, nullable=True)      # Proxima revision del BIA
     location_id = Column(Integer, ForeignKey("bcm_locations.id"), nullable=True)
+    # Jerarquia real del BIA: un proceso puede colgar de un macro-proceso, y ese
+    # de otro (macro-proceso -> proceso -> actividad, N niveles). `business_unit`
+    # agrupa procesos por area/departamento por encima de la sede.
+    parent_process_id = Column(Integer, ForeignKey("business_processes.id"), nullable=True)
+    business_unit = Column(String(128), nullable=True)
+    # BIA dirigido por el metodo declarado de la organizacion (BIACriteria):
+    # impacto por dimension y horizonte {dimension: {horizonte: nivel}}. El
+    # impacto ponderado y la banda los calcula el MISMO motor determinista que
+    # los escenarios (bcm_scenario_engine.weighted_impact), nunca la vista.
+    impacts = Column(JSON, nullable=True)
+    weighted_impact = Column(Float, nullable=True)
+    impact_band = Column(String(16), nullable=True)
     # Trazabilidad de import documental
     source            = Column(String(16), default="manual")
     import_batch_id   = Column(Integer, ForeignKey("ingest_batches.id"), nullable=True)
@@ -3591,6 +3603,35 @@ class IngestDocExtraction(Base):
     filename        = Column(String(255), nullable=True)
     result          = Column(JSON, nullable=True)   # el source-map completo con filas
     created_at      = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+
+class IngestDocument(Base):
+    """Documento del cliente, persistente y bajo control del usuario.
+
+    La documentacion de la ingesta es DINAMICA: se pueden anadir documentos mas
+    tarde, quitarlos, excluir los que no se quieren analizar y relanzar el
+    analisis en cualquier momento. Por defecto todo lo que se sube se analiza
+    (`included=True`). Los bytes se guardan en disco (`stored_path`) para poder
+    reanalizar sin volver a subirlos; la huella evita duplicar el mismo fichero.
+    """
+    __tablename__ = "ingest_documents"
+    id              = Column(Integer, primary_key=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), index=True)
+    filename        = Column(String(255), nullable=False)
+    sha256          = Column(String(64), nullable=True, index=True)
+    size_bytes      = Column(Integer, nullable=True)
+    doc_format      = Column(String(16), nullable=True)
+    stored_path     = Column(String(512), nullable=True)   # bytes persistidos
+    included        = Column(Boolean, default=True)         # se analiza o se obvia
+    status          = Column(String(20), default="pending")
+    # pending|analyzed|excluded|failed|unsupported
+    doc_kind        = Column(String(32), nullable=True)     # deducido tras analizar
+    confidence      = Column(Float, nullable=True)
+    last_batch_id   = Column(Integer, ForeignKey("ingest_batches.id"), nullable=True)
+    error           = Column(Text, nullable=True)
+    uploaded_by_id  = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at      = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    analyzed_at     = Column(DateTime, nullable=True)
 
 
 class IngestRecordTrace(Base):

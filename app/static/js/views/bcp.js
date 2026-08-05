@@ -252,6 +252,17 @@ const ViewBcp = (() => {
     window.location.href = '/api/bcp/export';
   }
 
+  // Informe BCP en Word. `section` vacio = informe completo; o una seccion
+  // suelta (bia, scenarios, strategies, plans, tests, suppliers, dependencies,
+  // status). Usa Api.download para llevar el token de sesion.
+  function _exportWord(section) {
+    const q = section ? ('?sections=' + encodeURIComponent(section)) : '';
+    const fname = section ? ('BCP_' + section + '.docx') : 'Informe_BCP.docx';
+    UI.toast(t('bcp.export_word_generating') || 'Generando informe Word...', 'info');
+    Api.download('/api/bcp/export/word' + q, fname)
+      .catch(e => UI.toast((e && e.message) || 'Error al exportar', 'error'));
+  }
+
   // Backward compat
   function _switchTab(tab) {
     const toStep = { locations:1, processes:2, bia:2, dependencies:3, suppliers:3, strategies:4, plans:4, evidence:5, import:5 };
@@ -745,13 +756,55 @@ const ViewBcp = (() => {
 
   // ── Tab BIA ──────────────────────────────────────────────────────────────────
 
+  // Pico de nivel de una dimension (peor horizonte) desde impacts.
+  function _biaPeak(impacts, dimKey) {
+    const byH = (impacts || {})[dimKey] || {};
+    let max = null;
+    Object.values(byH).forEach(v => {
+      if (v != null && (max === null || Number(v) > Number(max))) max = v;
+    });
+    return max;
+  }
+
+  // Vista BIA por proceso dirigida por el METODO declarado de la organizacion
+  // (BIACriteria): las dimensiones, el baremo de RTO, las bandas y la
+  // combinacion salen del metodo del cliente, no de columnas cableadas. El
+  // impacto ponderado y la banda los calcula el servidor; aqui son de solo
+  // lectura. Todo el metodo es editable (boton "Editar metodo") y transferible
+  // a cualquier organizacion.
   async function _tabBIA(el) {
-    if (!_procs.length) _procs = await Api.get('/api/bcp/processes').catch(() => []);
-    const IMPACT_LABELS = [t('bcp.impact_0'),t('bcp.impact_1'),t('bcp.impact_2'),t('bcp.impact_3')];
-    const IMPACT_COLORS = ['#6B7280','#16a34a','#D97706','#DC2626'];
-    // IMPORTANTE: construir todo el HTML antes de asignarlo para evitar que
-    // innerHTML += destruya los event listeners adjuntados previamente.
-    const bodyHtml = !_procs.length
+    const [criteria, procs] = await Promise.all([
+      Api.get('/api/bcp/bia-criteria').catch(() => null),
+      Api.get('/api/bcp/processes').catch(() => []),
+    ]);
+    _procs = procs || [];
+    _scenCriteriaCache = criteria;
+    const dims = (criteria && criteria.dimensions) || [];
+    const levels = (criteria && criteria.levels) || [];
+    const levelLabel = v => {
+      const l = levels.find(x => String(x.value) === String(v));
+      return l ? (l.label || l.value) : v;
+    };
+    const combo = criteria && (criteria.combination || 'product');
+    const comboTxt = combo === 'sum' ? t('bcp.bia_combo_sum')
+      : combo === 'formula' ? t('bcp.bia_combo_formula') : t('bcp.bia_combo_product');
+
+    const methodBanner = `
+      <div class="card" style="padding:12px 14px;margin-bottom:16px;border-left:3px solid var(--brand-purple);">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;">
+          <div>
+            <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-subtle);">${t('bcp.bia_method_title')}</div>
+            <div style="font-size:13px;margin-top:2px;">
+              ${dims.length} ${t('bcp.bia_dimensions_word')}: ${dims.map(d => UI.esc(d.label || d.key)).join(', ') || '—'}
+              ${comboTxt ? ' &middot; <span style="color:var(--text-subtle)">' + UI.esc(comboTxt) + '</span>' : ''}
+            </div>
+            ${criteria && criteria.is_default ? `<div style="font-size:11px;color:#D97706;margin-top:4px;">${t('bcp.bia_default_notice')}</div>` : ''}
+          </div>
+          <button class="btn btn-secondary btn-sm" onclick="ViewBcp._setScenSection('criteria')"><i class="ti ti-ruler-measure"></i> ${t('bcp.bia_edit_method')}</button>
+        </div>
+      </div>`;
+
+    const cardsHtml = !_procs.length
       ? `<div style="text-align:center;padding:48px 24px;">
           <i class="ti ti-chart-dots" style="font-size:48px;color:var(--text-muted);"></i>
           <h3 style="margin:16px 0 8px;">${t('bcp.no_bia_processes_title')}</h3>
@@ -761,7 +814,16 @@ const ViewBcp = (() => {
       : `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(400px,1fr));gap:16px;">
     ${_procs.map(p => {
       const pct = p.bia_pct || 0;
-      const color = pct >= 80 ? '#16a34a' : pct >= 50 ? '#D97706' : '#DC2626';
+      const pctColor = pct >= 80 ? '#16a34a' : pct >= 50 ? '#D97706' : '#DC2626';
+      const band = _scenBandInfo(criteria, p.impact_band);
+      const valued = p.impacts && Object.keys(p.impacts).length > 0;
+      const dimChips = dims.map(d => {
+        const peak = _biaPeak(p.impacts, d.key);
+        const has = peak != null;
+        const col = has ? band.color : '#6B7280';
+        return `<span style="padding:3px 8px;border-radius:12px;font-size:11px;background:${col}1f;color:${col};border:1px solid ${col}44;">
+          ${UI.esc(d.label || d.key)}: ${has ? UI.esc(String(levelLabel(peak))) : '—'}</span>`;
+      }).join('');
       return `
       <div class="card">
         <div class="card-header" style="display:flex;justify-content:space-between;align-items:center;">
@@ -769,10 +831,10 @@ const ViewBcp = (() => {
             <strong>${UI.esc(p.name)}</strong>
             <span style="color:${CRIT_COLORS[p.criticality]};font-size:12px;margin-left:8px;">${p.criticality}</span>
           </div>
-          <button class="btn btn-sm btn-secondary" onclick="ViewBcp._editProc(${p.id})">Completar BIA</button>
+          <button class="btn btn-sm btn-primary" onclick="ViewBcp._openProcBiaEditor(${p.id})"><i class="ti ti-ruler-measure"></i> ${t('bcp.bia_value_impact')}</button>
         </div>
         <div class="card-body">
-          <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:12px;text-align:center;">
+          <div style="display:grid;grid-template-columns:repeat(3,1fr) 1.3fr;gap:8px;margin-bottom:12px;text-align:center;">
             <div style="background:var(--bg-2);border-radius:6px;padding:8px;">
               <div style="font-size:16px;font-weight:700;">${p.rto_hours != null ? p.rto_hours + 'h' : '—'}</div>
               <div style="font-size:11px;color:var(--text-muted);">RTO</div>
@@ -785,30 +847,25 @@ const ViewBcp = (() => {
               <div style="font-size:16px;font-weight:700;">${p.mtpd_hours != null ? p.mtpd_hours + 'h' : '—'}</div>
               <div style="font-size:11px;color:var(--text-muted);">MTPD</div>
             </div>
-            <div style="background:var(--bg-2);border-radius:6px;padding:8px;">
-              <div style="font-size:13px;font-weight:700;">${p.mbco ? UI.esc(p.mbco.substring(0,15)) : '—'}</div>
-              <div style="font-size:11px;color:var(--text-muted);">MBCO</div>
+            <div style="background:${valued ? band.color + '14' : 'var(--bg-2)'};border-radius:6px;padding:8px;">
+              <div style="font-size:16px;font-weight:700;color:${valued ? band.color : 'var(--text-muted)'};">${valued && p.weighted_impact != null ? UI.esc(String(p.weighted_impact)) : '—'}</div>
+              <div style="font-size:11px;color:${valued ? band.color : 'var(--text-muted)'};">${valued ? UI.esc(band.label) : t('bcp.bia_not_valued')}</div>
             </div>
           </div>
           <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;">
-            ${[[t('bcp.impact_financial'), p.financial_impact], [t('bcp.impact_reputational'), p.reputational_impact],
-               [t('bcp.impact_legal'), p.legal_impact], [t('bcp.impact_operational'), p.operational_impact]].map(([lbl, val]) =>
-              `<span style="padding:3px 8px;border-radius:12px;font-size:11px;background:${IMPACT_COLORS[val??0]}22;color:${IMPACT_COLORS[val??0]};border:1px solid ${IMPACT_COLORS[val??0]}44;">
-                ${lbl}: ${IMPACT_LABELS[val??0]}
-              </span>`
-            ).join('')}
+            ${dimChips || `<span style="font-size:11px;color:var(--text-muted);">${t('bcp.bia_no_dimensions')}</span>`}
           </div>
           <div style="margin-bottom:6px;">
             <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px;">
-              <span>Completitud BIA</span><span style="color:${color};font-weight:700;">${pct}%</span>
+              <span>${t('bcp.bia_completeness')}</span><span style="color:${pctColor};font-weight:700;">${pct}%</span>
             </div>
             <div style="height:8px;background:var(--bg-3);border-radius:4px;">
-              <div style="width:${pct}%;height:100%;background:${color};border-radius:4px;transition:.3s;"></div>
+              <div style="width:${pct}%;height:100%;background:${pctColor};border-radius:4px;transition:.3s;"></div>
             </div>
           </div>
           ${(p.bia_missing||[]).length > 0 ? `
           <div style="font-size:11px;color:#DC2626;margin-top:6px;">
-            Falta: ${p.bia_missing.join(', ')}
+            ${t('bcp.bia_missing_label')}: ${p.bia_missing.join(', ')}
           </div>` : ''}
         </div>
       </div>`;
@@ -817,14 +874,120 @@ const ViewBcp = (() => {
 
     el.innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
-      <h3 style="margin:0;">${t('bcp.bia_title')} — ${_procs.length} procesos</h3>
+      <h3 style="margin:0;">${t('bcp.bia_title')} — ${_procs.length} ${t('bcp.bia_processes_word')}</h3>
       <button class="btn btn-primary" id="btn-bia-new">${t('bcp.btn_new_bia')}</button>
     </div>
-    ${bodyHtml}`;
+    ${methodBanner}
+    ${cardsHtml}`;
 
-    // listeners siempre DESPUÉS de asignar innerHTML
     document.getElementById('btn-bia-new')?.addEventListener('click', () => _openBiaPicker());
     document.getElementById('btn-bia-new2')?.addEventListener('click', () => _openBiaPicker());
+  }
+
+  // Editor de impacto de un proceso, dirigido por el metodo del cliente: rejilla
+  // dimension x horizonte identica a la de escenarios. El impacto ponderado y la
+  // banda los calcula el servidor al guardar (nunca se envian).
+  async function _openProcBiaEditor(processId) {
+    const [criteria, proc] = await Promise.all([
+      Api.get('/api/bcp/bia-criteria').catch(() => null),
+      Api.get('/api/bcp/processes/' + processId).catch(() => null),
+    ]);
+    if (!criteria) { UI.toast(t('bcp.scen_ass_no_criteria'), 'error'); return; }
+    if (!proc) { UI.toast(t('common.error'), 'error'); return; }
+
+    const dims = criteria.dimensions || [];
+    const horizons = criteria.horizons || [];
+    const levels = criteria.levels || [];
+    const impacts = proc.impacts || {};
+    const lbl = 'font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-subtle)';
+
+    let grid = '<div style="overflow-x:auto;border:0.5px solid var(--border);border-radius:var(--radius);margin-bottom:14px">'
+      + '<table class="data-table" style="font-size:12px;width:100%"><thead><tr>'
+      + '<th style="text-align:left;min-width:130px">' + UI.esc(t('bcp.scen_ass_dimension')) + '</th>'
+      + horizons.map(h => '<th style="text-align:center">' + UI.esc(h) + '</th>').join('')
+      + '</tr></thead><tbody>';
+    dims.forEach(d => {
+      grid += '<tr><td><strong>' + UI.esc(d.label || d.key) + '</strong></td>';
+      horizons.forEach(h => {
+        const cur = (impacts[d.key] || {})[h];
+        grid += '<td style="text-align:center"><select class="form-control" style="font-size:12px;padding:3px 4px"'
+          + ' data-imp-dim="' + UI.esc(d.key) + '" data-imp-h="' + UI.esc(h) + '">'
+          + '<option value="">' + UI.esc(t('bcp.scen_ass_level_none')) + '</option>'
+          + levels.map(l => '<option value="' + UI.esc(l.value) + '"'
+            + (String(cur) === String(l.value) ? ' selected' : '') + '>'
+            + UI.esc(l.value + ' — ' + (l.label || '')) + '</option>').join('')
+          + '</select></td>';
+      });
+      grid += '</tr>';
+    });
+    grid += '</tbody></table></div>';
+
+    const band = _scenBandInfo(criteria, proc.impact_band);
+    const valued = proc.impacts && Object.keys(proc.impacts).length > 0;
+    const computedHtml = valued
+      ? '<div style="display:flex;gap:18px;align-items:center;flex-wrap:wrap">'
+        + '<div><div style="font-size:10px;color:var(--text-subtle)">' + UI.esc(t('bcp.scen_ass_weighted')) + '</div>'
+        + '<div style="font-size:18px;font-weight:700">' + UI.esc(proc.weighted_impact != null ? proc.weighted_impact : '—') + '</div></div>'
+        + '<div><div style="font-size:10px;color:var(--text-subtle)">' + UI.esc(t('bcp.scen_ass_band')) + '</div>'
+        + '<div style="font-size:14px;font-weight:700;color:' + band.color + '">' + UI.esc(band.label) + '</div></div></div>'
+      : '<div style="font-size:12px;color:var(--text-subtle)">' + UI.esc(t('bcp.scen_ass_not_computed')) + '</div>';
+
+    const modal = document.createElement('div');
+    modal.className = 'modal-bg';
+    modal.innerHTML = '<div class="modal" style="max-width:760px;max-height:92vh;display:flex;flex-direction:column">'
+      + '<div class="modal-header" style="flex-shrink:0"><h2>'
+      + UI.esc(t('bcp.bia_value_impact') + ' — ' + proc.name) + '</h2>'
+      + '<button class="modal-close" onclick="this.closest(\'.modal-bg\').remove()">&#xd7;</button></div>'
+      + '<div class="modal-body" style="overflow-y:auto;flex:1;padding:20px 24px;display:block">'
+      + '<div style="' + lbl + ';margin-bottom:2px">' + UI.esc(t('bcp.scen_ass_grid_title')) + '</div>'
+      + '<div style="font-size:11px;color:var(--text-subtle);margin-bottom:8px">' + UI.esc(t('bcp.scen_ass_grid_hint')) + '</div>'
+      + grid
+      + '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:14px">'
+      + '<div><label style="' + lbl + '">RTO (h)</label>'
+      + '<input id="pbia-rto" type="number" step="any" class="form-control" style="font-size:13px" value="' + UI.esc(proc.rto_hours != null ? proc.rto_hours : '') + '"></div>'
+      + '<div><label style="' + lbl + '">RPO (h)</label>'
+      + '<input id="pbia-rpo" type="number" step="any" class="form-control" style="font-size:13px" value="' + UI.esc(proc.rpo_hours != null ? proc.rpo_hours : '') + '"></div>'
+      + '<div><label style="' + lbl + '">MTPD (h)</label>'
+      + '<input id="pbia-mtpd" type="number" step="any" class="form-control" style="font-size:13px" value="' + UI.esc(proc.mtpd_hours != null ? proc.mtpd_hours : '') + '"></div>'
+      + '</div>'
+      + '<div class="card" style="padding:12px;border-left:3px solid var(--brand-purple)">'
+      + '<div style="' + lbl + ';margin-bottom:2px">' + UI.esc(t('bcp.scen_ass_computed')) + '</div>'
+      + '<div style="font-size:11px;color:var(--text-subtle);margin-bottom:8px">' + UI.esc(t('bcp.scen_ass_computed_hint')) + '</div>'
+      + '<div>' + computedHtml + '</div></div>'
+      + '</div>'
+      + '<div class="modal-footer-sticky">'
+      + '<div style="display:flex;gap:8px;margin-left:auto">'
+      + '<button class="btn btn-sm" onclick="this.closest(\'.modal-bg\').remove()">' + UI.esc(t('common.cancel')) + '</button>'
+      + '<button class="btn btn-primary btn-sm" id="pbia-save"><i class="ti ti-check"></i> ' + UI.esc(t('common.save')) + '</button>'
+      + '</div></div></div>';
+    document.body.appendChild(modal);
+
+    modal.querySelector('#pbia-save').addEventListener('click', async () => {
+      const impactsOut = {};
+      modal.querySelectorAll('[data-imp-dim]').forEach(sel => {
+        if (!sel.value) return;
+        const d = sel.getAttribute('data-imp-dim');
+        const h = sel.getAttribute('data-imp-h');
+        if (!impactsOut[d]) impactsOut[d] = {};
+        impactsOut[d][h] = Number(sel.value);
+      });
+      const num = id => {
+        const raw = String(modal.querySelector(id).value || '').trim();
+        return raw === '' ? null : Number(raw);
+      };
+      // weighted_impact e impact_band NUNCA se envian: los calcula el servidor.
+      const payload = { impacts: impactsOut };
+      const rto = num('#pbia-rto'); if (rto != null) payload.rto_hours = rto;
+      const rpo = num('#pbia-rpo'); if (rpo != null) payload.rpo_hours = rpo;
+      const mtpd = num('#pbia-mtpd'); if (mtpd != null) payload.mtpd_hours = mtpd;
+      try {
+        await Api.patch('/api/bcp/processes/' + processId, payload);
+        modal.remove();
+        UI.toast(t('common.saved') || 'Guardado', 'success');
+        _procs = [];
+        _renderContent();
+      } catch (e) { UI.toast((e && e.message) || t('common.error'), 'error'); }
+    });
   }
 
   // ── Tab Dependencias ─────────────────────────────────────────────────────────
@@ -1313,13 +1476,26 @@ const ViewBcp = (() => {
         <div class="card-header"><h3><i class="ti ti-table-export"></i> Exportar datos actuales</h3></div>
         <div class="card-body">
           <p style="color:var(--text-muted);font-size:14px;">${t('bcp.export_desc')}</p>
-          <a href="/api/bcp/export" class="btn btn-secondary" download="BCP_datos.xlsx">
+          <div style="font-size:12px;font-weight:700;text-transform:uppercase;color:var(--text-subtle);margin-bottom:6px;">Informe Word (.docx)</div>
+          <button class="btn btn-primary" onclick="ViewBcp._exportWord('')">
+            <i class="ti ti-file-text"></i> Informe BCP completo
+          </button>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;">
+            ${[['bia','BIA'],['scenarios','Escenarios'],['strategies','Estrategias (DRP)'],
+               ['plans','Planes'],['tests','Pruebas'],['suppliers','Proveedores'],
+               ['dependencies','Dependencias'],['status','Estado']]
+              .map(([k,lbl]) => `<button class="btn btn-secondary btn-sm" onclick="ViewBcp._exportWord('${k}')">
+                <i class="ti ti-download"></i> ${lbl}</button>`).join('')}
+          </div>
+          <hr style="border:none;border-top:1px solid var(--border);margin:14px 0;">
+          <div style="font-size:12px;font-weight:700;text-transform:uppercase;color:var(--text-subtle);margin-bottom:6px;">Datos (Excel)</div>
+          <button class="btn btn-secondary" onclick="Api.download('/api/bcp/export','BCP_datos.xlsx')">
             <i class="ti ti-download"></i> Descargar BCP_datos.xlsx
-          </a>
+          </button>
           <div style="margin-top:12px;">
-            <a href="/api/bcp/import/template" class="btn btn-secondary btn-sm" download>
+            <button class="btn btn-secondary btn-sm" onclick="Api.download('/api/bcp/import/template','BCP_Plantilla.xlsx')">
               <i class="ti ti-file-download"></i> Descargar plantilla vacía
-            </a>
+            </button>
           </div>
         </div>
       </div>
@@ -1507,10 +1683,11 @@ const ViewBcp = (() => {
   // ── Modales — Proceso ────────────────────────────────────────────────────────
 
   async function _openProcModal(proc, isBia) {
-    let users = [], locFlat = [];
+    let users = [], locFlat = [], allProcs = [];
     try {
-      [users] = await Promise.all([
+      [users, allProcs] = await Promise.all([
         Api.get('/api/users/').catch(() => []),
+        Api.get('/api/bcp/processes').catch(() => []),
       ]);
       // Flatten location map for select
       (function flatten(nodes) {
@@ -1583,6 +1760,18 @@ const ViewBcp = (() => {
               ${locFlat.map(l => `<option value="${l.id}"${(proc?.location_id === l.id || (!proc && _locationFilter === l.id)) ? ' selected' : ''}>${'&nbsp;'.repeat((l.depth || 0) * 2)}${UI.esc(l.name)}</option>`).join('')}
             </select>
           </div>
+          <div>
+            <label style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;color:var(--text-subtle);padding-left:1px;">${t('bcp.field_business_unit')}</label>
+            <input id="pm-bu" class="form-control" style="font-size:13px;" value="${UI.esc(proc?.business_unit||'')}" placeholder="${t('bcp.field_business_unit_ph')}">
+          </div>
+        </div>
+        <div style="margin-bottom:14px;">
+          <label style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;color:var(--text-subtle);padding-left:1px;">${t('bcp.field_parent_process')}</label>
+          <div style="font-size:10px;color:var(--text-subtle);margin:2px 0 4px;">${t('bcp.field_parent_process_hint')}</div>
+          <select id="pm-parent" class="form-control" style="font-size:13px;">
+            <option value="">${t('bcp.no_parent_option')}</option>
+            ${allProcs.filter(x => !proc || x.id !== proc.id).map(x => `<option value="${x.id}"${proc?.parent_process_id === x.id ? ' selected' : ''}>${UI.esc(x.name)}</option>`).join('')}
+          </select>
         </div>
 
         ${proc ? (() => {
@@ -1872,6 +2061,8 @@ const ViewBcp = (() => {
       bia_version: g('pm-biaver')?.value || null,
       bia_review_date: g('pm-biarev')?.value || null,
       location_id: parseInt(g('pm-location')?.value) || null,
+      business_unit: (g('pm-bu')?.value || '').trim() || null,
+      parent_process_id: parseInt(g('pm-parent')?.value) || null,
     };
     if (!body.name) { UI.toast(t('bcp.proc_name_required'), 'error'); return; }
     try {
@@ -5177,431 +5368,277 @@ const ViewBcp = (() => {
 
   // ── Tab Grafo de dependencias ─────────────────────────────────────────────────
 
-  async function _ensureCytoscape() {
-    if (window.cytoscape) return true;
-    return new Promise(resolve => {
-      const s = document.createElement('script');
-      s.src = '/vendor/js/cytoscape.min.js';
-      s.onload = () => resolve(true);
-      s.onerror = () => resolve(false);
-      document.head.appendChild(s);
+  // ── Arbol de dependencias (Sede -> Proceso -> Dependencias, ISO/TS 22317) ────
+  // Reemplaza el grafo Cytoscape: un arbol limpio, colapsable y con zoom/pan,
+  // servido en local (sin librerias externas).
+  let _treeData = null;
+  let _treeZoom = 1;
+  let _treePan = { x: 0, y: 0 };
+  let _treeCollapsed = new Set();
+
+  const _DEP_CAT = {
+    IT_system:        { label: 'Sistemas y aplicaciones', icon: 'ti-server-2',       color: '#2563eb' },
+    supplier:         { label: 'Proveedores',             icon: 'ti-building-store', color: '#059669' },
+    personnel:        { label: 'Personas',                icon: 'ti-users',          color: '#7c3aed' },
+    facility:         { label: 'Instalaciones',           icon: 'ti-building',       color: '#b45309' },
+    communication:    { label: 'Comunicaciones',          icon: 'ti-antenna',        color: '#0891b2' },
+    utility:          { label: 'Suministros',             icon: 'ti-bolt',           color: '#ca8a04' },
+    transport:        { label: 'Transporte',              icon: 'ti-truck',          color: '#65a30d' },
+    external_service: { label: 'Servicios externos',      icon: 'ti-cloud',          color: '#0d9488' },
+    process:          { label: 'Otros procesos',          icon: 'ti-sitemap',        color: '#db2777' },
+    other:            { label: 'Otras dependencias',      icon: 'ti-circle-dot',     color: '#6b7280' },
+  };
+  const _TREE_CRIT = { critical: '#DC2626', high: '#EA580C', medium: '#D97706', low: '#16a34a' };
+
+  // Fase 2: panel de analisis de impacto (grafo proceso->proceso).
+  let _impactExpanded = {};
+  async function _renderImpactPanel(container) {
+    const box = container.querySelector('#dt-impact');
+    if (!box) return;
+    let a;
+    try { a = await Api.get('/api/bcp/impact-analysis'); }
+    catch (e) { box.innerHTML = ''; return; }
+    if (!a || !a.has_process_deps) {
+      box.innerHTML = '<div class="notice" style="font-size:12px">' + UI.esc(t('bcp.impact_none')) + '</div>';
+      return;
+    }
+    const critC = { critical: '#DC2626', high: '#EA580C', medium: '#D97706', low: '#16a34a' };
+    let html = '<div class="card" style="border-left:3px solid var(--brand-orange)">'
+      + '<h3 style="margin:0 0 2px">' + UI.esc(t('bcp.impact_title')) + '</h3>'
+      + '<p style="margin:0 0 12px;font-size:12px;color:var(--text-subtle)">' + UI.esc(t('bcp.impact_hint')) + '</p>';
+
+    // Ciclos (bloquean el orden de recuperacion): aviso rojo.
+    if ((a.cycles || []).length) {
+      html += '<div class="notice notice-error" style="margin-bottom:12px;font-size:12px">'
+        + '<b>' + UI.esc(t('bcp.impact_cycles')) + '</b><br>'
+        + a.cycles.map(c => UI.esc(c.join(' → '))).join('<br>') + '</div>';
+    }
+
+    // Camino critico de recuperacion.
+    const cp = a.critical_path || {};
+    if ((cp.nodes || []).length > 1) {
+      html += '<div style="margin-bottom:14px">'
+        + '<div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-subtle);margin-bottom:6px">'
+        + UI.esc(t('bcp.impact_critical_path')) + '</div>'
+        + '<div style="display:flex;flex-wrap:wrap;align-items:center;gap:4px">'
+        + cp.nodes.map((n, i) => (i ? '<i class="ti ti-arrow-right" style="color:var(--text-subtle);font-size:14px"></i>' : '')
+          + '<span class="badge" style="background:var(--brand-purple-4,rgba(89,0,141,.08));color:var(--brand-purple);font-size:12px">'
+          + UI.esc(n.name) + (n.rto_hours != null ? ' · ' + n.rto_hours + 'h' : '') + '</span>').join('')
+        + '</div>'
+        + '<div style="font-size:12px;color:var(--text-muted);margin-top:6px">'
+        + UI.esc(t('bcp.impact_total_rto', { n: cp.total_rto })) + '</div></div>';
+    }
+
+    // Hubs: procesos cuya caida afecta a mas procesos.
+    if ((a.hubs || []).length) {
+      html += '<div style="margin-bottom:6px"><div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-subtle);margin-bottom:6px">'
+        + UI.esc(t('bcp.impact_hubs')) + '</div>';
+      a.hubs.forEach(h => {
+        const c = critC[h.criticality] || '#6B7280';
+        const open = !!_impactExpanded[h.id];
+        html += '<div style="border:1px solid var(--border);border-radius:8px;padding:8px 10px;margin-bottom:6px">'
+          + '<div style="display:flex;align-items:center;gap:8px;cursor:pointer" data-impact-toggle="' + h.id + '">'
+          + '<span style="width:8px;height:8px;border-radius:50%;background:' + c + '"></span>'
+          + '<b style="font-size:13px">' + UI.esc(h.name) + '</b>'
+          + '<span style="color:var(--text-subtle);font-size:12px">' + UI.esc(t('bcp.impact_affects', { n: h.impact_count })) + '</span>'
+          + '<span style="margin-left:auto;color:var(--text-subtle)">' + (open ? '▾' : '▸') + '</span></div>'
+          + (open ? '<div style="margin-top:6px;font-size:12px;color:var(--text-muted);padding-left:16px">'
+            + (h.impact_names || []).map(UI.esc).join(', ') + '</div>' : '')
+          + '</div>';
+      });
+      html += '</div>';
+    }
+    html += '</div>';
+    box.innerHTML = html;
+    box.querySelectorAll('[data-impact-toggle]').forEach(el => {
+      el.onclick = () => {
+        const id = el.dataset.impactToggle;
+        if (_impactExpanded[id]) delete _impactExpanded[id]; else _impactExpanded[id] = 1;
+        _renderImpactPanel(container);
+      };
     });
   }
 
   async function _tabGraph(container) {
-    const cytOk = await _ensureCytoscape();
-    if (!cytOk) {
-      container.innerHTML = `<div class="notice notice-warning">${t('bcp.graph_load_error')}</div>`;
+    container.innerHTML =
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px">'
+      + '<div><h3 style="margin:0;font-size:16px">' + UI.esc(t('bcp.deptree_title')) + '</h3>'
+      + '<p style="margin:4px 0 0;font-size:12px;color:var(--text-subtle)">' + UI.esc(t('bcp.deptree_subtitle')) + '</p></div>'
+      + '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">'
+      + '<button class="btn btn-sm btn-ghost" id="dt-expand">' + UI.esc(t('bcp.deptree_expand')) + '</button>'
+      + '<button class="btn btn-sm btn-ghost" id="dt-collapse">' + UI.esc(t('bcp.deptree_collapse')) + '</button>'
+      + '<button class="btn btn-sm btn-ghost" id="dt-zin" title="Zoom +"><i class="ti ti-zoom-in"></i></button>'
+      + '<button class="btn btn-sm btn-ghost" id="dt-zout" title="Zoom -"><i class="ti ti-zoom-out"></i></button>'
+      + '<button class="btn btn-sm btn-ghost" id="dt-fit" title="' + UI.esc(t('bcp.deptree_reset')) + '"><i class="ti ti-arrows-maximize"></i></button>'
+      + '</div></div>'
+      + '<div id="dt-impact" style="margin-bottom:14px"></div>'
+      + '<div id="dt-viewport" style="position:relative;width:100%;height:600px;overflow:hidden;'
+      + 'border:1px solid var(--border);border-radius:var(--radius-lg);background:var(--bg-2);cursor:grab">'
+      + '<div id="dt-stage" style="position:absolute;top:0;left:0;transform-origin:0 0;padding:20px"></div></div>';
+    _treeZoom = 1; _treePan = { x: 0, y: 0 };
+    _renderImpactPanel(container);
+    try {
+      _treeData = await Api.get('/api/bcp/dependency-tree');
+    } catch (e) {
+      const vp = container.querySelector('#dt-viewport');
+      if (vp) vp.innerHTML = '<div class="notice notice-error" style="margin:14px">' + UI.esc(e.message || e) + '</div>';
       return;
     }
-
-    container.innerHTML = `
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px">
-        <div>
-          <h3 style="margin:0;font-size:16px">${t('bcp.graph_title')}</h3>
-          <p style="margin:4px 0 0;font-size:12px;color:var(--text-subtle)">${t('bcp.graph_subtitle')}</p>
-        </div>
-        <div style="display:flex;gap:6px;flex-wrap:wrap">
-          <select id="graph-loc-filter" class="form-control" style="font-size:12px;width:auto;min-width:140px">
-            <option value="">${t('bcp.option_all_locations')}</option>
-          </select>
-          <button class="btn btn-sm btn-ghost" id="btn-graph-zoom-in" title="Zoom +"><i class="ti ti-zoom-in"></i></button>
-          <button class="btn btn-sm btn-ghost" id="btn-graph-zoom-out" title="Zoom -"><i class="ti ti-zoom-out"></i></button>
-          <button class="btn btn-sm btn-ghost" id="btn-graph-fit" title="${t('bcp.graph_fit_title')}"><i class="ti ti-arrows-maximize"></i></button>
-          <button class="btn btn-sm btn-ghost" id="btn-graph-export" title="${t('bcp.graph_export_title')}"><i class="ti ti-download"></i></button>
-          <button class="btn btn-sm btn-secondary" id="btn-analyze-graph"><i class="ti ti-brain"></i> ${t('bcp.btn_analyze_ai')}</button>
-        </div>
-      </div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;font-size:12px">
-        <label style="display:flex;gap:5px;align-items:center;cursor:pointer;padding:4px 8px;border:1px solid var(--border);border-radius:4px">
-          <input type="checkbox" id="graph-show-assets" checked> <span>${t('bcp.chk_assets_it')}</span>
-        </label>
-        <label style="display:flex;gap:5px;align-items:center;cursor:pointer;padding:4px 8px;border:1px solid var(--border);border-radius:4px">
-          <input type="checkbox" id="graph-show-suppliers" checked> <span>${t('bcp.chk_external_suppliers')}</span>
-        </label>
-        <label style="display:flex;gap:5px;align-items:center;cursor:pointer;padding:4px 8px;border:1px solid var(--border);border-radius:4px">
-          <input type="checkbox" id="graph-show-labels" checked> <span>${t('bcp.chk_edge_labels')}</span>
-        </label>
-        <label style="display:flex;gap:5px;align-items:center;cursor:pointer;padding:4px 8px;border:1px solid var(--border);border-radius:4px">
-          <input type="checkbox" id="graph-only-critical"> <span>${t('bcp.chk_only_critical')}</span>
-        </label>
-      </div>
-      <div style="display:grid;grid-template-columns:1fr 300px;gap:14px;align-items:start">
-        <div>
-          <div id="cy-graph" style="width:100%;height:560px;border:1px solid var(--border);border-radius:var(--radius-lg);position:relative;overflow:hidden;background-color:#0b0b14;background-image:radial-gradient(circle at 15% 12%, rgba(124,58,237,0.14), transparent 45%),radial-gradient(circle at 85% 88%, rgba(5,150,105,0.12), transparent 45%),radial-gradient(circle at 50% 50%, rgba(255,255,255,0.05) 1px, transparent 1.4px);background-size:auto,auto,22px 22px;"></div>
-          <div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:8px;font-size:11px;color:var(--text-subtle)">
-            <div style="display:flex;align-items:center;gap:5px"><span style="width:12px;height:12px;border-radius:50%;background:#7c3aed;display:inline-block"></span>${t('bcp.legend_process')}</div>
-            <div style="display:flex;align-items:center;gap:5px"><span style="width:12px;height:12px;border-radius:3px;background:#D65200;display:inline-block"></span>${t('bcp.legend_asset_it')}</div>
-            <div style="display:flex;align-items:center;gap:5px"><span style="width:12px;height:12px;clip-path:polygon(50% 0%,100% 25%,100% 75%,50% 100%,0% 75%,0% 25%);background:#059669;display:inline-block"></span>${t('bcp.legend_external_supplier')}</div>
-            <div style="display:flex;align-items:center;gap:5px"><span style="width:12px;height:12px;border-radius:50%;border:2px solid #ef4444;display:inline-block"></span>SPOF</div>
-            <div style="display:flex;align-items:center;gap:5px"><span style="display:inline-block;width:24px;height:2px;background:#ef4444"></span>${t('bcp.legend_critical_dep')}</div>
-            <div style="display:flex;align-items:center;gap:5px"><span style="display:inline-block;width:24px;height:1px;background:#6b7280;border-top:1px dashed #6b7280"></span>${t('bcp.legend_external_dep')}</div>
-          </div>
-        </div>
-        <div style="display:flex;flex-direction:column;gap:10px;">
-          <div class="card" style="padding:12px;">
-            <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-subtle);margin-bottom:8px">${t('bcp.label_statistics')}</div>
-            <div id="graph-stats" style="font-size:12px;color:var(--text-subtle)">${t('common.loading')}</div>
-          </div>
-          <div id="graph-node-detail" style="display:none"></div>
-          <div id="graph-analysis" style="display:none"></div>
-        </div>
-      </div>
-    `;
-
-    // Poblar select de localizaciones
-    Object.values(_locationMap).filter(l => !l.parent_id).forEach(loc => {
-      const opt = document.createElement('option');
-      opt.value = loc.id; opt.textContent = loc.name;
-      if (loc.id === _locationFilter) opt.selected = true;
-      container.querySelector('#graph-loc-filter').appendChild(opt);
-    });
-
-    let _cyInstance = null;
-
-    async function loadGraph(locationId) {
-      const url = locationId ? `/api/bcp/graph?location_id=${locationId}` : '/api/bcp/graph';
-      const data = await Api.get(url).catch(() => ({ nodes: [], edges: [], stats: {} }));
-
-      const showAssets    = container.querySelector('#graph-show-assets')?.checked !== false;
-      const showSuppliers = container.querySelector('#graph-show-suppliers')?.checked !== false;
-      const onlyCritical  = container.querySelector('#graph-only-critical')?.checked === true;
-
-      const filteredNodes = (data.nodes || []).filter(n => {
-        if (n.type === 'asset'    && !showAssets)    return false;
-        if (n.type === 'supplier' && !showSuppliers) return false;
-        if (onlyCritical && !['critical', 'high'].includes(n.criticality) && !n.is_spof) return false;
-        return true;
-      });
-      const nodeIds = new Set(filteredNodes.map(n => String(n.id)));
-      const filteredEdges = (data.edges || []).filter(e =>
-        nodeIds.has(String(e.source)) && nodeIds.has(String(e.target))
-      );
-
-      const elements = [
-        ...filteredNodes.map(n => ({ data: {
-          id: String(n.id), label: n.label || n.name || String(n.id),
-          type: n.type, criticality: n.criticality,
-          is_spof: n.is_spof ? true : undefined,
-          rto: n.rto_hours, location_name: n.location_name,
-          _raw: n,
-        }})),
-        ...filteredEdges.map(e => ({ data: {
-          id: 'e-' + e.id, source: String(e.source), target: String(e.target),
-          type: e.type, label: e.label || '',
-          is_critical: e.is_critical ? true : undefined,
-        }})),
-      ];
-
-      const cyContainer = container.querySelector('#cy-graph');
-      if (!cyContainer) return;
-      cyContainer.innerHTML = '';
-
-      if (_cyInstance) { try { _cyInstance.destroy(); } catch (_) {} }
-
-      const showLabels = container.querySelector('#graph-show-labels')?.checked !== false;
-      _cyInstance = cytoscape({
-        container: cyContainer,
-        elements,
-        style: [
-          { selector: 'node', style: {
-            'label': 'data(label)',
-            'font-family': 'Inter, -apple-system, sans-serif',
-            'font-size': '10px', 'font-weight': 600, 'color': '#f1f5f9',
-            'text-valign': 'bottom', 'text-halign': 'center',
-            'text-margin-y': '8px',
-            'text-background-color': '#0b0b14', 'text-background-opacity': 0.75,
-            'text-background-shape': 'roundrectangle', 'text-background-padding': '3px',
-            'text-max-width': '90px', 'text-wrap': 'ellipsis',
-            'width': '40px', 'height': '40px',
-            'border-width': '0px',
-            'overlay-opacity': 0,
-            'transition-property': 'border-color border-width background-color opacity',
-            'transition-duration': '0.18s',
-          }},
-          // Proceso — esfera purpura con degradado (efecto glossy 3D)
-          { selector: 'node[type="process"]', style: {
-            'shape': 'ellipse',
-            'background-fill': 'radial-gradient',
-            'background-gradient-stop-colors': '#c4b5fd #7c3aed #4c1d95',
-            'background-gradient-stop-positions': '0 55 100',
-            'width': '46px', 'height': '46px',
-            'border-width': '2px', 'border-color': '#a78bfa', 'border-opacity': 0.9,
-          }},
-          { selector: 'node[type="process"][criticality="critical"]', style: {
-            'background-gradient-stop-colors': '#ddd6fe #6d28d9 #3b0764',
-            'width': '58px', 'height': '58px',
-            'border-width': '3px', 'border-color': '#c4b5fd',
-            'font-size': '11px',
-          }},
-          { selector: 'node[type="process"][criticality="high"]', style: {
-            'width': '52px', 'height': '52px',
-          }},
-          // Activo IT — rectangulo naranja con degradado
-          { selector: 'node[type="asset"]', style: {
-            'shape': 'roundrectangle',
-            'background-fill': 'linear-gradient',
-            'background-gradient-stop-colors': '#fdba74 #c2410c #7c2d12',
-            'background-gradient-stop-positions': '0 55 100',
-            'background-gradient-direction': 'to-bottom-right',
-            'width': '42px', 'height': '34px',
-            'border-width': '2px', 'border-color': '#fb923c', 'border-opacity': 0.9,
-          }},
-          { selector: 'node[type="asset"][criticality="critical"]', style: {
-            'background-gradient-stop-colors': '#fed7aa #9a3412 #431407',
-            'width': '52px', 'height': '42px',
-          }},
-          // Proveedor externo — hexagono verde con degradado
-          { selector: 'node[type="supplier"]', style: {
-            'shape': 'hexagon',
-            'background-fill': 'radial-gradient',
-            'background-gradient-stop-colors': '#6ee7b7 #059669 #022c22',
-            'background-gradient-stop-positions': '0 55 100',
-            'width': '46px', 'height': '46px',
-            'border-width': '2px', 'border-color': '#34d399', 'border-opacity': 0.9,
-          }},
-          { selector: 'node[type="supplier"][criticality="critical"]', style: {
-            'background-gradient-stop-colors': '#a7f3d0 #064e3b #022c22',
-            'width': '56px', 'height': '56px',
-          }},
-          { selector: 'node[type="supplier"][criticality="high"]', style: {
-            'width': '50px', 'height': '50px',
-          }},
-          // SPOF — halo rojo pulsante (glow)
-          { selector: 'node[?is_spof]', style: {
-            'border-width': '3px', 'border-color': '#ef4444',
-            'border-style': 'double',
-            'underlay-color': '#ef4444', 'underlay-opacity': 0.35,
-            'underlay-padding': '7px', 'underlay-shape': 'ellipse',
-          }},
-          // Criticidad crítica — halo ambar sutil
-          { selector: 'node[criticality="critical"]', style: {
-            'underlay-color': '#fbbf24', 'underlay-opacity': 0.18, 'underlay-padding': '5px',
-          }},
-          // Nodo seleccionado
-          { selector: 'node:selected', style: {
-            'border-width': '3px', 'border-color': '#fbbf24', 'border-style': 'solid',
-            'underlay-color': '#fbbf24', 'underlay-opacity': 0.3, 'underlay-padding': '8px',
-          }},
-          // Dim — atenuado al hacer hover sobre otro nodo
-          { selector: 'node.bcm-dim, edge.bcm-dim', style: { 'opacity': 0.15 } },
-          { selector: 'node.bcm-focus', style: { 'z-index': 999 } },
-          { selector: 'edge.bcm-focus', style: { 'opacity': 1, 'z-index': 998 } },
-          // Aristas base — curva suave con sombra de profundidad
-          { selector: 'edge', style: {
-            'width': '1.6px', 'line-color': '#64748b',
-            'target-arrow-shape': 'triangle', 'target-arrow-color': '#64748b',
-            'arrow-scale': 1.1,
-            'curve-style': 'unbundled-bezier', 'control-point-distances': 18, 'control-point-weights': 0.5,
-            'font-size': '9px', 'font-family': 'Inter, sans-serif', 'color': '#cbd5e1',
-            'label': showLabels ? 'data(label)' : '',
-            'text-rotation': 'autorotate',
-            'text-background-color': '#0b0b14', 'text-background-opacity': 0.75,
-            'text-background-shape': 'roundrectangle', 'text-background-padding': '2px',
-            'opacity': 0.85,
-            'transition-property': 'line-color width opacity',
-            'transition-duration': '0.18s',
-          }},
-          // Dependencia crítica — rojo con mas grosor
-          { selector: 'edge[?is_critical]', style: {
-            'line-color': '#ef4444', 'target-arrow-color': '#ef4444',
-            'width': '2.6px', 'opacity': 0.95,
-          }},
-          // Proveedor externo — discontinua azul
-          { selector: 'edge[?is_external]', style: {
-            'line-style': 'dashed', 'line-dash-pattern': [6, 4],
-            'line-color': '#3b82f6', 'target-arrow-color': '#3b82f6',
-            'width': '1.6px',
-          }},
-          // Dependencia crítica externa (supplier crítico)
-          { selector: 'edge[?is_critical][?is_external]', style: {
-            'line-color': '#f97316', 'target-arrow-color': '#f97316',
-            'width': '2.6px',
-          }},
-        ],
-        layout: {
-          name: 'cose',
-          animate: true, animationDuration: 700,
-          nodeDimensionsIncludeLabels: true,
-          nodeRepulsion: 9000, edgeElasticity: 110, gravity: 0.25,
-          numIter: 1200, coolingFactor: 0.98, idealEdgeLength: 90,
-        },
-        wheelSensitivity: 0.3,
-      });
-
-      // Tooltip flotante al pasar el cursor sobre un nodo
-      let tooltipEl = cyContainer.parentElement.querySelector('.bcm-graph-tooltip');
-      if (!tooltipEl) {
-        tooltipEl = document.createElement('div');
-        tooltipEl.className = 'bcm-graph-tooltip';
-        tooltipEl.style.cssText = 'position:absolute;display:none;pointer-events:none;z-index:50;'
-          + 'background:rgba(15,15,26,0.96);border:1px solid rgba(167,139,250,0.4);border-radius:8px;'
-          + 'padding:8px 10px;font-size:11px;color:#e2e8f0;max-width:220px;box-shadow:0 6px 20px rgba(0,0,0,0.45);'
-          + 'backdrop-filter:blur(4px);line-height:1.5;';
-        cyContainer.appendChild(tooltipEl);
-      }
-      const typeLabelsTip = { process: t('bcp.type_business_process'), asset: t('bcp.legend_asset_it'), supplier: t('bcp.legend_external_supplier') };
-      const typeColorsTip = { process: '#a78bfa', asset: '#fb923c', supplier: '#34d399' };
-
-      _cyInstance.on('mouseover', 'node', evt => {
-        const node = evt.target;
-        const raw = node.data('_raw') || {};
-        const neighborhood = node.closedNeighborhood();
-        _cyInstance.elements().not(neighborhood).addClass('bcm-dim');
-        neighborhood.addClass('bcm-focus');
-
-        const critColor = CRIT_COLORS[raw.criticality] || '#94a3b8';
-        tooltipEl.innerHTML = `
-          <div style="font-weight:700;font-size:12px;color:${typeColorsTip[raw.type] || '#fff'};margin-bottom:3px">${UI.esc(raw.label || raw.name || '')}</div>
-          <div style="color:#94a3b8;font-size:10px;text-transform:uppercase;letter-spacing:.03em;margin-bottom:5px">${typeLabelsTip[raw.type] || raw.type}</div>
-          <div>${t('bcp.label_criticality_colon')} <strong style="color:${critColor}">${UI.esc(raw.criticality || '—')}</strong></div>
-          ${raw.rto_hours != null ? `<div>RTO: <strong>${raw.rto_hours}h</strong></div>` : ''}
-          ${raw.rpo_hours != null ? `<div>RPO: <strong>${raw.rpo_hours}h</strong></div>` : ''}
-          ${raw.location_name ? `<div>${t('bcp.label_site_colon')} <strong>${UI.esc(raw.location_name)}</strong></div>` : ''}
-          ${raw.is_spof ? `<div style="color:#f87171;font-weight:700;margin-top:3px"><i class="ti ti-alert-triangle"></i> ${t('bcp.spof_warning')}</div>` : ''}
-          <div style="color:#64748b;font-size:10px;margin-top:5px">${t('bcp.tooltip_click_detail')}</div>
-        `;
-        tooltipEl.style.display = 'block';
-      });
-      _cyInstance.on('mousemove', evt => {
-        if (tooltipEl.style.display !== 'block') return;
-        const pos = evt.renderedPosition || (evt.target.renderedPosition ? evt.target.renderedPosition() : null);
-        if (!pos) return;
-        let left = pos.x + 16, top = pos.y + 12;
-        if (left + 230 > cyContainer.clientWidth) left = pos.x - 236;
-        if (top + 140 > cyContainer.clientHeight) top = pos.y - 140;
-        tooltipEl.style.left = left + 'px';
-        tooltipEl.style.top = top + 'px';
-      });
-      _cyInstance.on('mouseout', 'node', () => {
-        _cyInstance.elements().removeClass('bcm-dim bcm-focus');
-        tooltipEl.style.display = 'none';
-      });
-      _cyInstance.on('mouseover', 'edge', evt => {
-        const edge = evt.target;
-        _cyInstance.elements().not(edge.connectedNodes().union(edge)).addClass('bcm-dim');
-        edge.addClass('bcm-focus');
-      });
-      _cyInstance.on('mouseout', 'edge', () => {
-        _cyInstance.elements().removeClass('bcm-dim bcm-focus');
-      });
-
-      // Clic en nodo → panel de detalle enriquecido
-      _cyInstance.on('tap', 'node', evt => {
-        const raw = evt.target.data('_raw') || {};
-        const detail = container.querySelector('#graph-node-detail');
-        if (!detail) return;
-        detail.style.display = 'block';
-        const typeLabels  = { process: t('bcp.type_business_process'), asset: t('bcp.legend_asset_it'), supplier: t('bcp.legend_external_supplier') };
-        const typeColors  = { process: '#7c3aed', asset: '#c2410c', supplier: '#059669' };
-        const critColor   = CRIT_COLORS[raw.criticality] || '#6b7280';
-        const plans       = raw.plans || [];
-
-        let extraHtml = '';
-        if (raw.type === 'process') {
-          extraHtml = `
-            ${raw.rto_hours   != null ? `<div>RTO: <strong>${raw.rto_hours}h</strong></div>` : ''}
-            ${raw.rpo_hours   != null ? `<div>RPO: <strong>${raw.rpo_hours}h</strong></div>` : ''}
-            ${raw.mtpd_hours  != null ? `<div>MTPD: <strong>${raw.mtpd_hours}h</strong></div>` : ''}
-            ${raw.cost_per_hour != null ? `<div>${t('bcp.label_cost_per_hour_colon')} <strong>${parseFloat(raw.cost_per_hour).toLocaleString('es-ES')} €</strong></div>` : ''}
-            ${raw.location_name ? `<div>${t('bcp.label_site_colon')} <strong>${UI.esc(raw.location_name)}</strong></div>` : ''}
-            ${plans.length ? `<div style="margin-top:6px;padding-top:6px;border-top:1px solid var(--border)">
-              <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--text-subtle);margin-bottom:3px">${t('bcp.label_associated_plans')}</div>
-              ${plans.map(pl => `<span class="badge badge-secondary" style="font-size:10px;margin:1px 2px">${UI.esc(pl.code||pl.type)}</span>`).join('')}
-            </div>` : ''}
-          `;
-        } else if (raw.type === 'supplier') {
-          extraHtml = `
-            ${raw.contract_sla_hours != null ? `<div>${t('bcp.label_contract_sla_colon')} <strong>${raw.contract_sla_hours}h</strong></div>` : ''}
-            ${raw.rto_impact_hours  != null ? `<div>${t('bcp.label_rto_impact_colon')} <strong>${raw.rto_impact_hours}h</strong></div>` : ''}
-            <div>${t('bcp.label_contingency_plan_colon')} <strong>${raw.has_contingency ? t('common.yes') : t('common.no')}</strong></div>
-          `;
-        }
-
-        detail.innerHTML = `<div class="card" style="padding:12px;border-left:3px solid ${typeColors[raw.type]||'var(--primary)'}">
-          <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:${typeColors[raw.type]||'var(--text-subtle)'};margin-bottom:6px">
-            ${typeLabels[raw.type] || raw.type}
-          </div>
-          <div style="font-size:14px;font-weight:700;margin-bottom:8px;line-height:1.3">${UI.esc(raw.label || raw.name || '')}</div>
-          <div style="font-size:12px;display:grid;gap:4px;color:var(--text-subtle)">
-            <div>${t('bcp.label_criticality_colon')} <strong style="color:${critColor}">${UI.esc(raw.criticality || '—')}</strong></div>
-            ${extraHtml}
-            ${raw.is_spof ? `<div style="margin-top:6px;padding:5px 8px;background:#fee2e2;border-radius:4px;color:#b91c1c;font-weight:700;font-size:11px">
-              ${t('bcp.spof_full_warning')}
-            </div>` : ''}
-          </div>
-          <div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:8px">
-            ${raw.type === 'process' ? `<button class="btn btn-ghost btn-sm" style="font-size:11px"
-              onclick="ViewBcp._switchTab('processes')"><i class="ti ti-external-link"></i> ${t('bcp.btn_view_process')}</button>` : ''}
-            ${raw.type === 'supplier' ? `<button class="btn btn-ghost btn-sm" style="font-size:11px"
-              onclick="ViewBcp._setSubTab(3,'suppliers')"><i class="ti ti-external-link"></i> ${t('bcp.btn_view_supplier')}</button>` : ''}
-          </div>
-        </div>`;
-      });
-
-      // Clic en fondo → deseleccionar
-      _cyInstance.on('tap', evt => {
-        if (evt.target === _cyInstance) {
-          const detail = container.querySelector('#graph-node-detail');
-          if (detail) detail.style.display = 'none';
-        }
-      });
-
-      // Estadísticas
-      const stats = data.stats || {};
-      const statsEl = container.querySelector('#graph-stats');
-      if (statsEl) statsEl.innerHTML = `
-        <div>${t('bcp.graph_stats_nodes_edges', { nodes: filteredNodes.length, edges: filteredEdges.length })}</div>
-        <div style="color:${(stats.spof_count || 0) > 0 ? 'var(--risk-critical)' : 'inherit'}">
-          ${stats.spof_count || 0} SPOF${(stats.spof_count || 0) !== 1 ? 's' : ''}
-        </div>`;
-    }
-
-    await loadGraph(_locationFilter);
-
-    const getLocId = () => {
-      const v = container.querySelector('#graph-loc-filter').value;
-      return v ? parseInt(v) : (_locationFilter || null);
-    };
-
-    container.querySelector('#graph-loc-filter').onchange = async e => {
-      await loadGraph(e.target.value ? parseInt(e.target.value) : null);
-    };
-    container.querySelector('#graph-show-assets').onchange    = () => loadGraph(getLocId());
-    container.querySelector('#graph-show-suppliers').onchange = () => loadGraph(getLocId());
-    container.querySelector('#graph-only-critical').onchange  = () => loadGraph(getLocId());
-    container.querySelector('#graph-show-labels').onchange    = () => loadGraph(getLocId());
-
-    container.querySelector('#btn-graph-zoom-in').onclick  = () => _cyInstance?.zoom({ level: (_cyInstance.zoom() || 1) * 1.25, renderedPosition: { x: _cyInstance.width()/2, y: _cyInstance.height()/2 } });
-    container.querySelector('#btn-graph-zoom-out').onclick = () => _cyInstance?.zoom({ level: (_cyInstance.zoom() || 1) * 0.8,  renderedPosition: { x: _cyInstance.width()/2, y: _cyInstance.height()/2 } });
-    container.querySelector('#btn-graph-fit').onclick      = () => _cyInstance?.fit(undefined, 30);
-    container.querySelector('#btn-graph-export').onclick   = () => {
-      if (!_cyInstance) return;
-      const png = _cyInstance.png({ full: true, scale: 2, bg: '#0f0f1a' });
-      const a = document.createElement('a');
-      a.href = png; a.download = 'mapa-dependencias-bcm.png'; a.click();
-    };
-
-    container.querySelector('#btn-analyze-graph').onclick = async () => {
-      const btn = container.querySelector('#btn-analyze-graph');
-      btn.disabled = true;
-      btn.innerHTML = '<i class="ti ti-loader-2 ti-spin"></i> ' + t('bcp.btn_analyzing');
-      const locId = container.querySelector('#graph-loc-filter').value;
-      try {
-        const url = locId ? `/api/bcp/graph/analyze?location_id=${locId}` : '/api/bcp/graph/analyze';
-        const res = await Api.post(url, {});
-        const div = container.querySelector('#graph-analysis');
-        div.style.display = 'block';
-        div.innerHTML = `<div class="card" style="padding:12px;margin-top:8px">
-          <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-subtle);margin-bottom:6px"><i class="ti ti-brain"></i> ${t('bcp.label_ai_analysis_short')}</div>
-          <div style="font-size:12px;line-height:1.6;white-space:pre-wrap">${UI.esc(res.analysis || '')}</div>
-        </div>`;
-      } catch (e) { UI.toast(t('bcp.error_ai_analysis_prefix') + (e.message || e), 'error'); }
-      finally { btn.disabled = false; btn.innerHTML = '<i class="ti ti-brain"></i> ' + t('bcp.btn_analyze_ai'); }
-    };
+    _renderTree();
+    _wireTree(container);
   }
 
-  // ── Tab Evidencias ────────────────────────────────────────────────────────────
+  function _treeToggle(key) {
+    if (_treeCollapsed.has(key)) _treeCollapsed.delete(key); else _treeCollapsed.add(key);
+    _renderTree();
+  }
+
+  function _renderTree() {
+    const stage = document.getElementById('dt-stage');
+    if (!stage || !_treeData) return;
+    try {
+      const locs = _treeData.locations || [];
+      const unassigned = _treeData.unassigned || [];
+      const tot = _treeData.totals || {};
+      if (!locs.length && !unassigned.length) {
+        stage.innerHTML = '<p class="text-muted">' + UI.esc(t('bcp.deptree_empty')) + '</p>';
+        _applyTreeTransform(); return;
+      }
+      let html = '<div style="font-size:11px;color:var(--text-subtle);margin-bottom:12px">'
+        + UI.esc(t('bcp.deptree_totals', { l: tot.locations || 0, p: tot.processes || 0, d: tot.dependencies || 0 })) + '</div>';
+      html += locs.map(l => _treeLocation(l)).join('');
+      if (unassigned.length) {
+        html += _treeLocation({ id: 0, name: t('bcp.deptree_no_location'), processes: unassigned });
+      }
+      stage.innerHTML = html;
+      _applyTreeTransform();
+      _wireTreeNodes();
+    } catch (e) {
+      stage.innerHTML = '<div class="notice notice-error">' + UI.esc(String(e && e.message || e)) + '</div>';
+    }
+  }
+
+  function _treeLocation(loc) {
+    const key = 'loc-' + loc.id;
+    const collapsed = _treeCollapsed.has(key);
+    const procs = loc.processes || [];
+    const sub = (loc.city || loc.country)
+      ? ' <span style="font-weight:400;color:rgba(255,255,255,.75);font-size:12px">'
+        + UI.esc([loc.city, loc.country].filter(Boolean).join(', ')) + '</span>' : '';
+    return '<div style="margin-bottom:14px">'
+      + '<div class="dt-node" data-tkey="' + key + '" style="display:inline-flex;align-items:center;gap:8px;'
+      + 'background:var(--brand-purple);color:#fff;padding:8px 14px;border-radius:8px;cursor:pointer;font-weight:700">'
+      + '<span style="font-size:12px">' + (collapsed ? '▸' : '▾') + '</span>'
+      + '<i class="ti ti-map-pin"></i> ' + UI.esc(loc.name) + sub
+      + '<span class="badge" style="background:rgba(255,255,255,.25);color:#fff">' + procs.length + '</span></div>'
+      + (collapsed ? '' :
+        '<div style="margin-left:22px;border-left:2px solid var(--border);padding-left:16px;margin-top:8px">'
+        + (procs.length ? procs.map(p => _treeProcess(p)).join('')
+          : '<div style="font-size:12px;color:var(--text-subtle);padding:6px 0">' + UI.esc(t('bcp.deptree_no_process')) + '</div>')
+        + '</div>')
+      + '</div>';
+  }
+
+  function _treeProcess(p) {
+    const key = 'proc-' + p.id;
+    const collapsed = _treeCollapsed.has(key);
+    const cats = p.dependencies || {};
+    const catKeys = Object.keys(cats);
+    const critCol = _TREE_CRIT[p.criticality] || '#6b7280';
+    const bia = p.bia_pct || 0;
+    const biaCol = bia >= 80 ? '#16a34a' : bia >= 50 ? '#D97706' : '#DC2626';
+    return '<div style="margin:8px 0">'
+      + '<div class="dt-node" data-tkey="' + key + '" style="display:inline-flex;align-items:center;gap:8px;'
+      + 'background:var(--bg-1,#fff);border:1px solid var(--border);border-left:4px solid ' + critCol + ';'
+      + 'padding:7px 12px;border-radius:7px;cursor:pointer">'
+      + '<span style="font-size:11px;color:var(--text-subtle)">' + (p.dep_count ? (collapsed ? '▸' : '▾') : '·') + '</span>'
+      + '<b>' + UI.esc(p.name) + '</b>'
+      + (p.criticality ? '<span class="badge" style="background:' + critCol + ';color:#fff">' + UI.esc(_critLabel(p.criticality)) + '</span>' : '')
+      + (p.rto_hours != null ? '<span style="font-size:11px;color:var(--text-subtle)">RTO ' + p.rto_hours + 'h</span>' : '')
+      + '<span style="font-size:11px;color:' + biaCol + ';font-weight:700">BIA ' + bia + '%</span>'
+      + '<span class="badge badge-muted">' + (p.dep_count || 0) + ' dep.</span></div>'
+      + (collapsed || !catKeys.length ? '' :
+        '<div style="margin-left:20px;padding-left:14px;border-left:1px dashed var(--border);margin-top:6px">'
+        + catKeys.map(ck => _treeCategory(p.id, ck, cats[ck])).join('') + '</div>')
+      + '</div>';
+  }
+
+  function _treeCategory(pid, type, deps) {
+    const key = 'cat-' + pid + '-' + type;
+    const collapsed = _treeCollapsed.has(key);
+    const cat = _DEP_CAT[type] || _DEP_CAT.other;
+    return '<div style="margin:5px 0">'
+      + '<div class="dt-node" data-tkey="' + key + '" style="display:inline-flex;align-items:center;gap:6px;'
+      + 'cursor:pointer;font-size:13px;color:' + cat.color + ';font-weight:600">'
+      + '<span style="font-size:10px">' + (collapsed ? '▸' : '▾') + '</span>'
+      + '<i class="ti ' + cat.icon + '"></i> ' + UI.esc(cat.label)
+      + '<span class="badge badge-muted" style="font-weight:400">' + deps.length + '</span></div>'
+      + (collapsed ? '' :
+        '<div style="margin-left:18px;display:flex;flex-wrap:wrap;gap:6px;margin-top:5px">'
+        + deps.map(d =>
+          '<span style="display:inline-flex;align-items:center;gap:5px;background:var(--bg-1,#fff);'
+          + 'border:1px solid var(--border);border-radius:14px;padding:3px 10px;font-size:12px">'
+          + (d.is_critical ? '<span style="width:7px;height:7px;border-radius:50%;background:#DC2626;display:inline-block" title="critica"></span>' : '')
+          + UI.esc(d.name)
+          + (d.depends_on_process ? ' <span style="color:var(--text-subtle)">→ ' + UI.esc(d.depends_on_process) + '</span>' : '')
+          + '</span>').join('')
+        + '</div>')
+      + '</div>';
+  }
+
+  function _critLabel(c) {
+    try { return (CRIT_LABEL && CRIT_LABEL[c]) || c; } catch (e) { return c; }
+  }
+
+  function _applyTreeTransform() {
+    const stage = document.getElementById('dt-stage');
+    if (stage) stage.style.transform = 'translate(' + _treePan.x + 'px,' + _treePan.y + 'px) scale(' + _treeZoom + ')';
+  }
+
+  function _wireTreeNodes() {
+    document.querySelectorAll('.dt-node').forEach(n => {
+      n.onclick = (e) => { e.stopPropagation(); _treeToggle(n.dataset.tkey); };
+    });
+  }
+
+  function _wireTree(container) {
+    const vp = container.querySelector('#dt-viewport');
+    const zin = document.getElementById('dt-zin');
+    const zout = document.getElementById('dt-zout');
+    const fit = document.getElementById('dt-fit');
+    const exp = document.getElementById('dt-expand');
+    const col = document.getElementById('dt-collapse');
+    if (zin) zin.onclick = () => { _treeZoom = Math.min(2.5, _treeZoom * 1.2); _applyTreeTransform(); };
+    if (zout) zout.onclick = () => { _treeZoom = Math.max(0.3, _treeZoom / 1.2); _applyTreeTransform(); };
+    if (fit) fit.onclick = () => { _treeZoom = 1; _treePan = { x: 0, y: 0 }; _applyTreeTransform(); };
+    if (exp) exp.onclick = () => { _treeCollapsed = new Set(); _renderTree(); };
+    if (col) col.onclick = () => {
+      _treeCollapsed = new Set();
+      (_treeData.locations || []).forEach(l => (l.processes || []).forEach(p => _treeCollapsed.add('proc-' + p.id)));
+      _renderTree();
+    };
+    if (!vp) return;
+    vp.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      const f = e.deltaY < 0 ? 1.1 : 1 / 1.1;
+      _treeZoom = Math.max(0.3, Math.min(2.5, _treeZoom * f));
+      _applyTreeTransform();
+    }, { passive: false });
+    let dragging = false, sx = 0, sy = 0, ox = 0, oy = 0;
+    vp.addEventListener('mousedown', (e) => {
+      if (e.target.closest('.dt-node')) return;
+      dragging = true; sx = e.clientX; sy = e.clientY; ox = _treePan.x; oy = _treePan.y;
+      vp.style.cursor = 'grabbing';
+    });
+    vp.addEventListener('mousemove', (e) => {
+      if (!dragging) return;
+      _treePan = { x: ox + (e.clientX - sx), y: oy + (e.clientY - sy) };
+      _applyTreeTransform();
+    });
+    const stop = () => { dragging = false; vp.style.cursor = 'grab'; };
+    vp.addEventListener('mouseup', stop);
+    vp.addEventListener('mouseleave', stop);
+  }
 
   async function _tabEvidence(container) {
     // Carga datos en paralelo
@@ -6092,11 +6129,315 @@ const ViewBcp = (() => {
     }
   }
 
+  // ── Mapa de continuidad (jerarquia real) ─────────────────────────────────────
+  // Sede(anidada) -> Unidad de negocio -> Proceso -> Subproceso -> Dependencias,
+  // con RTO efectivo (propagado desde la dependencia critica mas lenta),
+  // hallazgos de coherencia y procedencia. Todo lo calcula el servidor.
+
+  let _cmapData = null;
+  let _cmapCollapsed = {};   // claves de nodos plegados (loc:/unit:/proc:)
+  let _cmapDepsOpen = {};    // dependencias de un proceso: abiertas (por defecto cerradas)
+
+  const _CMAP_CRIT = { critical: 'Crítico', high: 'Alto', medium: 'Medio', low: 'Bajo' };
+  const _CMAP_BAND = {
+    critical: { c: '#DC2626', l: 'Crítico' }, severe: { c: '#EA580C', l: 'Severo' },
+    relevant: { c: '#ca8a04', l: 'Relevante' }, trivial: { c: '#16a34a', l: 'Trivial' },
+    none: { c: '#6B7280', l: 'Sin impacto' },
+  };
+  const _CMAP_SEV = { high: '#DC2626', medium: '#EA580C', low: '#ca8a04' };
+
+  async function _tabContinuityMap(body) {
+    body.innerHTML = '<div class="card"><p class="text-muted">' + t('common.loading') + '</p></div>';
+    try {
+      _cmapData = await Api.get('/api/bcp/continuity-map');
+    } catch (e) {
+      body.innerHTML = '<div class="notice notice-error">' + UI.esc((e && e.message) || String(e)) + '</div>';
+      return;
+    }
+    _cmapRender(body);
+  }
+
+  function _cmapRto(n) {
+    const dh = n.declared_rto, eh = n.effective_rto;
+    if (dh == null && eh == null) return '<span style="color:var(--text-subtle)">RTO —</span>';
+    if (n.rto_gap) {
+      return '<span title="RTO declarado vs efectivo (limitado por su dependencia critica mas lenta)">'
+        + 'RTO <s style="color:var(--text-subtle)">' + _cmapH(dh) + '</s> '
+        + '<b style="color:#EA580C">' + _cmapH(eh) + '</b></span>';
+    }
+    return 'RTO <b>' + _cmapH(dh != null ? dh : eh) + '</b>';
+  }
+  function _cmapH(v) { return v == null ? '—' : (Number.isInteger(v) ? v : v) + 'h'; }
+
+  function _cmapProvenance(n) {
+    let out = '';
+    if (n.source === 'imported') out += '<span class="badge badge-orange" style="font-size:9px">importado</span> ';
+    if (n.needs_review) out += '<span class="badge badge-danger" style="font-size:9px">revisar</span> ';
+    if (n.import_confidence != null)
+      out += '<span class="badge badge-muted" style="font-size:9px">conf. ' + Math.round(n.import_confidence * 100) + '%</span> ';
+    return out;
+  }
+
+  function _cmapFindings(n) {
+    const f = n.findings || [];
+    if (!f.length) return '';
+    return '<div style="margin:6px 0 2px 4px;display:flex;flex-direction:column;gap:4px">'
+      + f.map(x => '<div style="font-size:11px;display:flex;gap:6px;align-items:flex-start">'
+        + '<i class="ti ti-alert-triangle" style="color:' + (_CMAP_SEV[x.severity] || '#ca8a04') + ';font-size:13px;flex-shrink:0;margin-top:1px"></i>'
+        + '<span>' + UI.esc(x.message) + '</span></div>').join('')
+      + '</div>';
+  }
+
+  function _cmapDeps(n) {
+    const groups = n.dependencies || {};
+    const types = Object.keys(groups);
+    if (!types.length) return '';
+    const key = 'proc:' + n.id;
+    const open = !!_cmapDepsOpen[key];
+    const total = n.dep_count || 0;
+    let html = '<div style="margin:4px 0 2px 4px">'
+      + '<button class="btn btn-ghost btn-xs" data-cmap-deps="' + n.id + '">'
+      + (open ? '▾' : '▸') + ' ' + total + ' dependencia(s)</button>';
+    if (open) {
+      types.forEach(ty => {
+        const icon = DEP_ICONS[ty] || 'ti-circle';
+        const label = DEP_LABELS[ty] || ty;
+        html += '<div style="margin:4px 0 2px 10px;font-size:11px">'
+          + '<i class="ti ' + icon + '" style="margin-right:4px;color:var(--text-subtle)"></i><b>' + UI.esc(label) + '</b>';
+        html += '<div style="margin-left:16px">' + groups[ty].map(d =>
+          '<div style="display:flex;gap:6px;align-items:center;padding:1px 0">'
+          + (d.is_critical ? '<span class="badge badge-danger" style="font-size:9px">crítica</span> ' : '')
+          + '<span>' + UI.esc(d.name || (d.depends_on_process || '—')) + '</span>'
+          + (d.depends_on_process ? '<span style="color:var(--text-subtle)">→ ' + UI.esc(d.depends_on_process) + '</span>' : '')
+          + (d.rto_hours != null ? '<span style="color:var(--text-subtle)">· RTO ' + _cmapH(d.rto_hours) + '</span>' : '')
+          + (d.recovery_sequence != null ? '<span class="badge badge-muted" style="font-size:9px">orden ' + d.recovery_sequence + '</span>' : '')
+          + '</div>').join('') + '</div></div>';
+      });
+    }
+    return html + '</div>';
+  }
+
+  function _cmapProc(n, depth) {
+    const key = 'proc:' + n.id;
+    const collapsed = !!_cmapCollapsed[key];
+    const hasKids = (n.children || []).length > 0;
+    const critC = CRIT_COLORS[n.criticality] || '#6B7280';
+    const band = _CMAP_BAND[n.impact_band] || null;
+    const fCount = n.findings_subtree || 0;
+    const pad = 8 + depth * 18;
+    let html = '<div style="border-left:2px solid ' + critC + '33;margin:3px 0 3px ' + pad + 'px;padding:6px 8px;background:var(--bg-1);border-radius:0 8px 8px 0">'
+      + '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">'
+      + (hasKids
+        ? '<button class="btn btn-ghost btn-xs" data-cmap-toggle="' + key + '" style="padding:0 4px">' + (collapsed ? '▸' : '▾') + '</button>'
+        : '<span style="width:18px;display:inline-block"></span>')
+      + '<span style="width:8px;height:8px;border-radius:50%;background:' + critC + ';flex-shrink:0"></span>'
+      + '<b style="font-size:13px"><a href="#" data-cmap-dossier="' + n.id + '" style="color:inherit;text-decoration:none;border-bottom:1px dotted var(--text-subtle)" title="' + UI.esc(t('bcp.dos_open')) + '">' + UI.esc(n.name) + '</a></b>'
+      + '<span class="badge" style="font-size:9px;background:' + critC + '1f;color:' + critC + '">' + (_CMAP_CRIT[n.criticality] || n.criticality) + '</span>'
+      + '<span style="font-size:11px;color:var(--text-muted)">' + _cmapRto(n) + '</span>'
+      + (band ? '<span class="badge" style="font-size:9px;background:' + band.c + '1f;color:' + band.c + '">' + band.l + '</span>' : '')
+      + (n.bia_pct != null ? '<span style="font-size:11px;color:var(--text-subtle)">BIA ' + n.bia_pct + '%</span>' : '')
+      + ' ' + _cmapProvenance(n)
+      + (fCount ? '<span class="badge badge-danger" style="font-size:9px" title="Hallazgos de coherencia en este proceso y sus subprocesos">' + fCount + ' aviso(s)</span>' : '')
+      + '<button class="btn btn-ghost btn-xs" data-cmap-edit="' + n.id + '" style="margin-left:auto"><i class="ti ti-edit"></i></button>'
+      + '</div>'
+      + _cmapFindings(n)
+      + _cmapDeps(n);
+    if (!collapsed) {
+      (n.children || []).forEach(c => { html += _cmapProc(c, depth + 1); });
+    }
+    html += '</div>';
+    return html;
+  }
+
+  function _cmapUnit(u, depth) {
+    const procs = u.processes || [];
+    if (!procs.length) return '';
+    const pad = 8 + depth * 18;
+    let html = '';
+    if (u.business_unit) {
+      html += '<div style="margin:6px 0 2px ' + pad + 'px;font-size:11px;font-weight:700;'
+        + 'text-transform:uppercase;letter-spacing:.05em;color:var(--text-subtle)">'
+        + '<i class="ti ti-building-community" style="margin-right:4px"></i>' + UI.esc(u.business_unit)
+        + ' <span class="badge badge-muted" style="font-size:9px">' + u.process_count + '</span></div>';
+    }
+    procs.forEach(p => { html += _cmapProc(p, depth + 1); });
+    return html;
+  }
+
+  function _cmapLoc(loc, depth) {
+    const key = 'loc:' + loc.id;
+    const collapsed = !!_cmapCollapsed[key];
+    const pad = depth * 14;
+    let html = '<div style="margin:8px 0 0 ' + pad + 'px">'
+      + '<div style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:var(--bg-2);border-radius:8px;cursor:pointer" data-cmap-toggle="' + key + '">'
+      + '<span>' + (collapsed ? '▸' : '▾') + '</span>'
+      + '<i class="ti ti-map-pin" style="color:var(--brand-purple)"></i>'
+      + '<b>' + UI.esc(loc.name) + '</b>'
+      + (loc.city || loc.country ? '<span style="font-size:11px;color:var(--text-subtle)">' + UI.esc([loc.city, loc.country].filter(Boolean).join(', ')) + '</span>' : '')
+      + '<span class="badge badge-muted" style="font-size:10px">' + loc.process_count + ' proceso(s)</span>'
+      + (loc.findings ? '<span class="badge badge-danger" style="font-size:10px">' + loc.findings + ' aviso(s)</span>' : '')
+      + '</div>';
+    if (!collapsed) {
+      (loc.units || []).forEach(u => { html += _cmapUnit(u, depth); });
+      (loc.sublocations || []).forEach(s => { html += _cmapLoc(s, depth + 1); });
+    }
+    html += '</div>';
+    return html;
+  }
+
+  function _cmapSetAll(collapse) {
+    _cmapCollapsed = {};
+    if (!collapse) return;
+    const mark = (loc) => {
+      _cmapCollapsed['loc:' + loc.id] = 1;
+      (loc.sublocations || []).forEach(mark);
+    };
+    (_cmapData.locations || []).forEach(mark);
+  }
+
+  function _cmapRender(body) {
+    const d = _cmapData;
+    if (!d) return;
+    const keepY = window.scrollY;
+    const tot = d.totals || {};
+    const empty = !(d.locations || []).length && !(d.unassigned || []).length;
+    let html = '<div class="card">'
+      + '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:12px">'
+      + '<div><h3 style="margin:0">' + t('bcp.tile_map') + '</h3>'
+      + '<p style="margin:2px 0 0;font-size:12px;color:var(--text-subtle)">' + t('bcp.map_hint') + '</p></div>'
+      + '<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">'
+      + '<span style="font-size:12px;color:var(--text-subtle)">' + (tot.locations || 0) + ' sedes · '
+      + (tot.processes || 0) + ' procesos · ' + (tot.dependencies || 0) + ' dependencias</span>'
+      + (d.findings_total ? '<span class="badge badge-danger">' + d.findings_total + ' avisos de coherencia</span>' : '<span class="badge badge-low">sin avisos</span>')
+      + '<button class="btn btn-ghost btn-xs" data-cmap-all="expand">Expandir todo</button>'
+      + '<button class="btn btn-ghost btn-xs" data-cmap-all="collapse">Colapsar todo</button>'
+      + '</div></div>';
+    if (empty) {
+      html += '<div style="text-align:center;padding:32px;color:var(--text-muted)">'
+        + '<i class="ti ti-sitemap" style="font-size:40px"></i>'
+        + '<p style="margin-top:10px">' + t('bcp.map_empty') + '</p></div>';
+    } else {
+      (d.locations || []).forEach(loc => { html += _cmapLoc(loc, 0); });
+      const un = d.unassigned || [];
+      const unProcs = un.reduce((a, u) => a + (u.processes || []).length, 0);
+      if (unProcs) {
+        html += '<div style="margin-top:12px;padding:8px 10px;background:var(--bg-2);border-radius:8px">'
+          + '<b><i class="ti ti-help-circle" style="margin-right:4px;color:#EA580C"></i>Procesos sin sede asignada</b>'
+          + '<span class="badge badge-muted" style="margin-left:6px;font-size:10px">' + unProcs + '</span></div>';
+        un.forEach(u => { html += _cmapUnit(u, 0); });
+      }
+    }
+    html += '</div>';
+    body.innerHTML = html;
+    window.scrollTo(0, keepY);
+
+    body.querySelectorAll('[data-cmap-toggle]').forEach(el => {
+      el.onclick = () => {
+        const k = el.dataset.cmapToggle;
+        if (_cmapCollapsed[k]) delete _cmapCollapsed[k]; else _cmapCollapsed[k] = 1;
+        _cmapRender(body);
+      };
+    });
+    body.querySelectorAll('[data-cmap-deps]').forEach(el => {
+      el.onclick = () => {
+        const k = 'proc:' + el.dataset.cmapDeps;
+        if (_cmapDepsOpen[k]) delete _cmapDepsOpen[k]; else _cmapDepsOpen[k] = 1;
+        _cmapRender(body);
+      };
+    });
+    body.querySelectorAll('[data-cmap-all]').forEach(b => {
+      b.onclick = () => { _cmapSetAll(b.dataset.cmapAll === 'collapse'); _cmapRender(body); };
+    });
+    body.querySelectorAll('[data-cmap-edit]').forEach(b => {
+      b.onclick = (ev) => { ev.stopPropagation(); _editProc(Number(b.dataset.cmapEdit)); };
+    });
+    body.querySelectorAll('[data-cmap-dossier]').forEach(a => {
+      a.onclick = (ev) => { ev.preventDefault(); ev.stopPropagation(); _openProcDossier(Number(a.dataset.cmapDossier)); };
+    });
+  }
+
+  // Fase 3: panel unico por proceso (dossier). Reune BIA, RTO efectivo,
+  // jerarquia, dependencias (y quien depende de el), escenarios, estrategias,
+  // planes, pruebas y hallazgos de coherencia en un solo sitio.
+  async function _openProcDossier(pid) {
+    let d;
+    try { d = await Api.get('/api/bcp/processes/' + pid + '/dossier'); }
+    catch (e) { UI.toast((e && e.message) || t('common.error'), 'error'); return; }
+    const critC = CRIT_COLORS[d.criticality] || '#6B7280';
+    const band = _CMAP_BAND[d.impact_band] || null;
+    const sec = (title, inner) => inner
+      ? '<div style="margin-bottom:16px"><div style="font-size:11px;font-weight:700;text-transform:uppercase;'
+        + 'letter-spacing:.05em;color:var(--text-subtle);margin-bottom:6px">' + UI.esc(title) + '</div>' + inner + '</div>'
+      : '';
+    const plink = (x) => '<a href="#" data-dossier="' + x.id + '" style="color:var(--brand-purple)">' + UI.esc(x.name) + '</a>';
+    const chips = (arr, fn) => arr && arr.length ? '<div style="display:flex;flex-wrap:wrap;gap:6px">' + arr.map(fn).join('') + '</div>' : '';
+
+    const rtoBox = '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;text-align:center;margin-bottom:14px">'
+      + [['RTO', d.rto_gap ? '<s style="color:var(--text-subtle)">' + _cmapH(d.declared_rto) + '</s> <b style="color:#EA580C">' + _cmapH(d.effective_rto) + '</b>' : _cmapH(d.declared_rto != null ? d.declared_rto : d.effective_rto)],
+         ['RPO', _cmapH(d.rpo_hours)], ['MTPD', _cmapH(d.mtpd_hours)], ['BIA', (d.bia_pct || 0) + '%']]
+        .map(([l, v]) => '<div style="background:var(--bg-2);border-radius:6px;padding:8px"><div style="font-size:14px;font-weight:700">' + v + '</div><div style="font-size:11px;color:var(--text-muted)">' + l + '</div></div>').join('')
+      + '</div>';
+
+    const findings = (d.findings || []).length
+      ? '<div class="notice notice-warn" style="margin-bottom:14px;font-size:12px"><b>' + UI.esc(t('bcp.dos_findings')) + '</b>'
+        + (d.findings || []).map(f => '<div style="margin-top:4px">• ' + UI.esc(f.message) + '</div>').join('') + '</div>'
+      : '';
+
+    let depsHtml = '';
+    Object.keys(d.dependencies || {}).forEach(ty => {
+      depsHtml += '<div style="margin-bottom:4px"><i class="ti ' + (DEP_ICONS[ty] || 'ti-circle') + '" style="margin-right:4px;color:var(--text-subtle)"></i><b style="font-size:12px">' + UI.esc(DEP_LABELS[ty] || ty) + '</b>'
+        + '<div style="margin-left:16px;font-size:12px">' + (d.dependencies[ty] || []).map(x =>
+          '<div>' + (x.is_critical ? '<span class="badge badge-danger" style="font-size:9px">crítica</span> ' : '')
+          + UI.esc(x.name || x.depends_on_process || '—')
+          + (x.depends_on_process ? ' <span style="color:var(--text-subtle)">→ ' + UI.esc(x.depends_on_process) + '</span>' : '')
+          + (x.rto_hours != null ? ' <span style="color:var(--text-subtle)">· RTO ' + _cmapH(x.rto_hours) + '</span>' : '') + '</div>').join('')
+        + '</div></div>';
+    });
+
+    const modal = document.createElement('div');
+    modal.className = 'modal-bg';
+    modal.innerHTML = '<div class="modal" style="max-width:760px;max-height:92vh;display:flex;flex-direction:column">'
+      + '<div class="modal-header" style="flex-shrink:0"><div>'
+      + '<h2 style="margin:0">' + UI.esc(d.name) + '</h2>'
+      + '<div style="font-size:12px;color:var(--text-subtle);margin-top:2px">'
+      + '<span class="badge" style="background:' + critC + '1f;color:' + critC + '">' + (_CMAP_CRIT[d.criticality] || d.criticality) + '</span> '
+      + (d.business_unit ? UI.esc(d.business_unit) + ' · ' : '')
+      + (band ? '<span class="badge" style="background:' + band.c + '1f;color:' + band.c + '">' + band.l + '</span> ' : '')
+      + (d.needs_review ? '<span class="badge badge-danger" style="font-size:9px">revisar</span>' : '')
+      + '</div></div>'
+      + '<button class="modal-close" onclick="this.closest(\'.modal-bg\').remove()">&#xd7;</button></div>'
+      + '<div class="modal-body" style="overflow-y:auto;flex:1;padding:20px 24px;display:block">'
+      + (d.description ? '<p style="font-size:13px;color:var(--text-muted);margin-top:0">' + UI.esc(d.description) + '</p>' : '')
+      + rtoBox + findings
+      + sec(t('bcp.dos_hierarchy'),
+          (d.parent ? '<div style="font-size:13px;margin-bottom:4px">' + t('bcp.dos_parent') + ': ' + plink(d.parent) + '</div>' : '')
+          + ((d.children || []).length ? '<div style="font-size:13px">' + t('bcp.dos_children') + ': ' + (d.children || []).map(plink).join(', ') + '</div>' : ''))
+      + sec(t('bcp.dos_deps'), depsHtml)
+      + sec(t('bcp.dos_depended_by'), chips(d.depended_on_by, x => '<span class="badge badge-muted">' + plink(x) + '</span>'))
+      + sec(t('bcp.dos_scenarios'), (d.scenarios || []).length ? '<div style="font-size:12px">' + d.scenarios.map(s =>
+          '<div>' + UI.esc(s.scenario_name || '—') + (s.impact_band ? ' <span class="badge badge-muted" style="font-size:9px">' + UI.esc((_CMAP_BAND[s.impact_band] || {}).l || s.impact_band) + '</span>' : '')
+          + (s.weighted_impact != null ? ' · ' + s.weighted_impact : '') + '</div>').join('') + '</div>' : '')
+      + sec(t('bcp.dos_strategies'), chips(d.strategies, s => '<span class="badge badge-muted">' + UI.esc(s.name) + '</span>'))
+      + sec(t('bcp.dos_plans'), chips(d.plans, p => '<span class="badge badge-muted">' + UI.esc((p.code ? p.code + ' · ' : '') + p.name) + '</span>'))
+      + sec(t('bcp.dos_tests'), chips(d.tests, t2 => '<span class="badge badge-muted">' + UI.esc((t2.code || t2.test_type || '') + (t2.result ? ' · ' + t2.result : '')) + '</span>'))
+      + '</div>'
+      + '<div class="modal-footer-sticky"><div style="margin-left:auto;display:flex;gap:8px">'
+      + '<button class="btn btn-sm" onclick="this.closest(\'.modal-bg\').remove()">' + t('common.close') + '</button>'
+      + '<button class="btn btn-primary btn-sm" id="dos-edit"><i class="ti ti-edit"></i> ' + t('bcp.dos_edit') + '</button>'
+      + '</div></div></div>';
+    document.body.appendChild(modal);
+    modal.querySelector('#dos-edit').onclick = () => { modal.remove(); _editProc(pid); };
+    modal.querySelectorAll('[data-dossier]').forEach(a => {
+      a.onclick = (ev) => { ev.preventDefault(); modal.remove(); _openProcDossier(Number(a.dataset.dossier)); };
+    });
+  }
+
   // ── Operar mode: tiles ────────────────────────────────────────────────────────
 
   async function _renderOperarMode(content) {
     const tiles = [
       { id:'dashboard',     label:t('bcp.tile_dashboard'), icon:'ti-chart-dots-3',   color:'var(--primary)',   sub:t('bcp.tile_dashboard_sub') },
+      { id:'map',           label:t('bcp.tile_map'),     icon:'ti-sitemap',        color:'#59008D',          sub:t('bcp.tile_map_sub') },
       { id:'graph',         label:t('bcp.tile_graph'),   icon:'ti-topology-full',  color:'#D65200',          sub:t('bcp.tile_graph_sub') },
       { id:'tests',         label:t('bcp.tile_tests'),  icon:'ti-clipboard-check',color:'#16a34a',          sub:t('bcp.tile_tests_sub') },
       { id:'alertas',       label:t('bcp.tile_alerts'),   icon:'ti-bell-ringing',   color:'#2563EB',          sub:t('bcp.tile_alerts_sub') },
@@ -6104,7 +6445,7 @@ const ViewBcp = (() => {
     ];
     // Badge de activación activa
     const activeAct = await Api.get('/api/bcp/activations').catch(() => []).then(list => list.find(a => !a.closed_at));
-    let tilesHtml = '<div class="bcm-tiles-grid" style="grid-template-columns:repeat(5,1fr)">';
+    let tilesHtml = '<div class="bcm-tiles-grid" style="grid-template-columns:repeat(6,1fr)">';
     tiles.forEach(t => {
       const activeCls = _currentTile === t.id ? ' active' : '';
       const isActTile = t.id === 'activaciones';
@@ -6125,6 +6466,7 @@ const ViewBcp = (() => {
     const body = content.querySelector('#bcm-tile-body');
     switch (_currentTile) {
       case 'dashboard':    await _tileDashboard(body); break;
+      case 'map':          await _tabContinuityMap(body); break;
       case 'graph':        await _tabGraph(body); break;
       case 'tests':        await _stepTests(body); break;
       case 'alertas':      await _stepAlertas(body); break;
@@ -8610,11 +8952,11 @@ const ViewBcp = (() => {
     _saveTest, _openTestResultModal, _saveTestResult, _onResultChange,
     _editSL, _saveSL, _delSL,
     _openEPModal, _saveEP,
-    _handleDrop, _handleFileSelect,
+    _handleDrop, _handleFileSelect, _exportBcp, _exportWord,
     _setImportMode, _onFileSelect, _renderImportPreview, _confirmImport,
     _runBcpAiAnalysis,
     _toggleLocChildren, _setLocFilter, _editLocation, _modalLocation,
-    _setScenSection, _scenExplainNA, _openScenAssessment,
+    _setScenSection, _scenExplainNA, _openScenAssessment, _openProcBiaEditor,
     _scenNewScenario, _scenEditScenario, _scenToggleScenario, _scenDeleteScenario,
     _scenNewRule, _scenEditRule, _scenToggleRule, _scenDeleteRule,
     _openTestModal,
