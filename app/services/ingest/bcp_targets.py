@@ -172,10 +172,16 @@ register(EntitySpec(
     label="Proceso de negocio",
     natural_keys=(("name",),),
     depends_on=("bcm_location",),
-    references={"location_id": ("bcm_location", "name")},
+    # `parent_process_id` referencia a OTRO proceso del mismo lote por su nombre:
+    # es como se reconstruye la jerarquia macro-proceso -> proceso -> actividad
+    # desde un documento plano. El materializador ordena padres antes que hijos.
+    references={"location_id": ("bcm_location", "name"),
+                "parent_process_id": ("business_process", "name")},
     fields=(
         FieldSpec("name", max_length=255, conflict_policy="first"),
         FieldSpec("description"),
+        FieldSpec("business_unit", max_length=128, conflict_policy="first"),
+        FieldSpec("parent_process_id", type="int", conflict_policy="first"),
         FieldSpec("criticality", max_length=16, choices=CRITICALITY,
                   conflict_policy="max"),
         FieldSpec("priority", type="int", conflict_policy="min"),
@@ -207,10 +213,15 @@ register(EntitySpec(
     model="BCPDependency",
     label="Dependencia de proceso",
     depends_on=("business_process",),
-    references={"process_id": ("business_process", "name")},
+    # `depends_on_process_id` enlaza una dependencia de tipo "process" con el
+    # proceso del que se depende (por nombre): asi el grafo proceso->proceso y su
+    # propagacion de impacto se reconstruyen desde el documento, no a mano.
+    references={"process_id": ("business_process", "name"),
+                "depends_on_process_id": ("business_process", "name")},
     natural_keys=(("process_id", "name"),),
     fields=(
         FieldSpec("process_id", type="int", conflict_policy="first"),
+        FieldSpec("depends_on_process_id", type="int", conflict_policy="first"),
         FieldSpec("name", max_length=255, conflict_policy="first"),
         FieldSpec("dependency_type", max_length=32, choices=DEP_TYPES),
         FieldSpec("description"),

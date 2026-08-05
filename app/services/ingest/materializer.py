@@ -154,7 +154,8 @@ def materialize(db, org_id: Optional[int], batch, entity_key: str,
     fmap = spec.field_map()
     writable = {f.name for f in spec.writable_fields()}
 
-    for raw in rows or []:
+    rows = _sort_self_referential(spec, rows or [], entity_key)
+    for raw in rows:
         # Cada fila va en su propio savepoint: una fila mala se descarta sola y
         # no arrastra a las doscientas siguientes dejando la sesion inservible.
         savepoint = db.begin_nested()
@@ -212,6 +213,56 @@ def materialize(db, org_id: Optional[int], batch, entity_key: str,
 
     db.flush()
     return result
+
+
+def _sort_self_referential(spec, rows: list, entity_key: str) -> list:
+    """Ordena para que un registro que referencia a OTRO del mismo lote por su
+    clave natural venga despues de aquel.
+
+    Un documento lista procesos en cualquier orden: un subproceso puede aparecer
+    antes que su macro-proceso. Como las referencias se resuelven contra lo ya
+    materializado (indice del lote + base), un hijo procesado antes que su padre
+    se quedaria sin jerarquia. Aqui se reordena por la cadena padre->hijo, con
+    proteccion de ciclos (un ciclo no ordena, pero tampoco cuelga: se emite igual).
+    Generico: sirve a cualquier entidad con una referencia a si misma.
+    """
+    self_refs = [fn for fn, (te, _tf) in (spec.references or {}).items()
+                 if te == entity_key]
+    if not self_refs or not rows:
+        return rows
+    key_field = next((kf[0] for kf in (spec.natural_keys or ())
+                      if len(kf) == 1), None)
+    if not key_field:
+        return rows
+
+    def _norm(v):
+        return reconciler.normalize_name(v) if isinstance(v, str) else v
+
+    by_name: dict = {}
+    for r in rows:
+        nm = _norm(r.get(key_field))
+        if nm not in (None, ""):
+            by_name.setdefault(nm, r)
+
+    ordered: list = []
+    seen: set = set()
+
+    def emit(row, stack: frozenset) -> None:
+        rid = id(row)
+        if rid in seen or rid in stack:
+            return
+        for fn in self_refs:
+            ref = row.get("_ref_" + fn)
+            parent = by_name.get(_norm(ref)) if ref not in (None, "") else None
+            if parent is not None and id(parent) != rid:
+                emit(parent, stack | {rid})
+        if rid not in seen:
+            seen.add(rid)
+            ordered.append(row)
+
+    for r in rows:
+        emit(r, frozenset())
+    return ordered
 
 
 def _missing_required(model, spec, values: dict, org_id) -> list[str]:
