@@ -140,7 +140,14 @@ Multi-usuario con roles.
 - [ ] Pruebas end-to-end manuales de las vistas nuevas con usuario real
 - [ ] Backlog del modulo Plan Director/Tratamiento: priorizado en `RISKHUB_TREATMENT_MODULE_SPEC.md` (seccion "Backlog de mejoras") — no construir hasta validar con uso real
 
-Deploy: prod (91.99.83.202) el 2026-08-03 — Fase 2 del rework del BCP: grafo de
+Deploy: prod (91.99.83.202) el 2026-08-05 — Fase 3 del rework del BCP: panel
+unico por proceso (dossier). `bcp_hierarchy_service.build_process_dossier` +
+`GET /api/bcp/processes/{id}/dossier`: reune RTO efectivo vs declarado, avisos de
+coherencia, jerarquia (padre/subprocesos navegables), dependencias por categoria,
+procesos que dependen de este, escenarios, estrategias, planes y pruebas. En el
+Mapa de continuidad los nombres de proceso abren su ficha; los enlaces internos
+navegan entre fichas. Tests test_bcp_process_dossier.py. Pendiente: Fase 4
+(ingesta reconstruye jerarquia). Deploy previo 2026-08-03 — Fase 2 del rework del BCP: grafo de
 dependencias proceso->proceso. `bcp_hierarchy_service.build_impact_analysis` +
 `GET /api/bcp/impact-analysis`: propagacion de impacto transitiva (si cae X,
 afecta a N procesos), orden de recuperacion (Kahn), camino critico por RTO (DP
