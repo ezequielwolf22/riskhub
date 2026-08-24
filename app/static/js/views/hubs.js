@@ -49,6 +49,7 @@ const ViewWatchHub = {
       hub: 'watch-hub',
       label: t('nav.watch'),
       tabs: [
+        { id: 'visiox', label: t('hub.watch.visiox'), view: ViewVisioX },
         { id: 'cve', label: t('hub.watch.cve'), view: ViewCve, route: 'cve' },
         { id: 'osint', label: t('hub.watch.osint'), view: ViewOsint },
         { id: 'external-findings', label: t('hub.watch.external_findings'), view: ViewExternalFindings },

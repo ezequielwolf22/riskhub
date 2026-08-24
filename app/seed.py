@@ -832,6 +832,19 @@ def _migrate_columns() -> None:
          "tprm_templates", "regwatch_review_at"),
         ("ALTER TABLE tprm_templates ADD COLUMN regwatch_pack_id INTEGER",
          "tprm_templates", "regwatch_pack_id"),
+        # v6.7.0 — Digital Risk Protection (VisioX)
+        ("ALTER TABLE external_findings ADD COLUMN finding_type VARCHAR(64)",
+         "external_findings", "finding_type"),
+        ("ALTER TABLE external_findings ADD COLUMN external_url VARCHAR(512)",
+         "external_findings", "external_url"),
+        ("ALTER TABLE external_findings ADD COLUMN evidence_json TEXT",
+         "external_findings", "evidence_json"),
+        ("ALTER TABLE external_findings ADD COLUMN evidence_encrypted TEXT",
+         "external_findings", "evidence_encrypted"),
+        ("ALTER TABLE external_findings ADD COLUMN is_sensitive BOOLEAN DEFAULT 0",
+         "external_findings", "is_sensitive"),
+        ("ALTER TABLE external_findings ADD COLUMN last_seen_at DATETIME",
+         "external_findings", "last_seen_at"),
         # v6.0.0 — registro de migraciones one-shot (pasos de datos que solo corren una vez)
         (
             """CREATE TABLE IF NOT EXISTS app_migrations (
@@ -1543,6 +1556,41 @@ def init_db() -> None:
         _run_one_shot_seal_regwatch_notified(db)
     finally:
         db.close()
+
+
+def _migrate_external_finding_source_enum(db: Session) -> None:
+    """Anade los valores nuevos al tipo ENUM de external_findings.source.
+
+    En SQLite el Enum de SQLAlchemy compila a VARCHAR sin CHECK, asi que no hay
+    nada que migrar. En PostgreSQL compila a un TIPO ENUM nativo: anadir un
+    miembro al enum de Python NO altera el tipo en una base ya creada y el
+    INSERT falla con invalid input value. Peor aun, una sola fila con un valor
+    no declarado hace que CUALQUIER lectura de ExternalFinding de esa
+    organizacion reviente con LookupError, tumbando el listado entero.
+
+    _migrate_columns() solo sabe emitir ALTER TABLE ADD COLUMN, de ahi que esto
+    vaya aparte. ALTER TYPE ... ADD VALUE no puede ir dentro de una transaccion
+    en PostgreSQL < 12, asi que se ejecuta con autocommit.
+    """
+    from app.database import is_sqlite
+    from app.models import ExternalFindingSource
+    from sqlalchemy import text as _text
+
+    if is_sqlite(db):
+        return
+    try:
+        conn = db.get_bind().connect().execution_options(isolation_level="AUTOCOMMIT")
+        try:
+            for member in ExternalFindingSource:
+                conn.execute(_text(
+                    "ALTER TYPE externalfindingsource ADD VALUE IF NOT EXISTS :v"
+                ).bindparams(v=member.name))
+        finally:
+            conn.close()
+    except Exception as exc:  # noqa: BLE001
+        # No es fatal: si el tipo no existe todavia, create_all lo creara
+        # completo. Se registra para que no pase inadvertido.
+        print(f"Migracion del enum externalfindingsource omitida: {exc}")
 
 
 def _run_one_shot_seal_regwatch_notified(db: Session) -> None:

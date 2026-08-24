@@ -23,7 +23,7 @@ from app.routers import (
     admin, ai, ai_config, alerts, architecture, asset_groups, assets, audit, audits,
     auth, awareness, bcp, catalogues, ccm, change_requests, compliance, context, controls,
     cve, documents, evidence, executive, external_findings, feature_flags, gdpr, inbox, incidents, ingest, jobs,
-    initiatives, integrations_erp, method, integrations_forms, integrations_virustotal, itsm, licenses, management_review, magerit, nis2, nonconformities, onboarding_gate, organizations,
+    initiatives, integrations_erp, integrations_visiox, method, integrations_forms, integrations_virustotal, itsm, licenses, management_review, magerit, nis2, nonconformities, onboarding_gate, organizations,
     osint, policies, portal, predictive, questionnaire_flows, questionnaire_schedules, regwatch, report_schedules,
     report_templates, reports, risk_level_config, risks, search, sharepoint,
     soa_versions, sso, strategic_plans, supplier_questionnaires, suppliers, surveys, tasks, tprm,
@@ -348,6 +348,7 @@ app.include_router(portal.router)
 app.include_router(magerit.router)
 app.include_router(integrations_erp.router)
 app.include_router(integrations_virustotal.router)
+app.include_router(integrations_visiox.router)
 app.include_router(management_review.router)
 app.include_router(soa_versions.router)
 app.include_router(nis2.router)

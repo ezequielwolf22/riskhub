@@ -54,7 +54,32 @@ def _finding_out(f: ExternalFinding) -> dict:
         "import_batch_id": f.import_batch_id,
         "detected_at": f.detected_at.isoformat() if f.detected_at else None,
         "created_at": f.created_at.isoformat() if f.created_at else None,
+        # v6.7.0 — DRP. `evidence` es SIEMPRE la parte publica: la evidencia
+        # protegida vive cifrada y solo se sirve por
+        # /api/integrations/visiox/findings/{id}/evidence, con rol y auditoria.
+        # `has_protected_evidence` deja que la UI ofrezca el boton sin filtrar
+        # ni un byte de dato personal en el listado.
+        "finding_type": f.finding_type,
+        "external_url": f.external_url,
+        "is_sensitive": bool(f.is_sensitive),
+        "has_protected_evidence": bool(f.evidence_encrypted),
+        "evidence": _safe_json(f.evidence_json),
+        "last_seen_at": f.last_seen_at.isoformat() if f.last_seen_at else None,
+        "resolved_at": f.resolved_at.isoformat() if f.resolved_at else None,
     }
+
+
+def _safe_json(raw: Optional[str]) -> Optional[dict]:
+    """Deserializa la evidencia publica. Un JSON corrupto no debe tumbar el
+    listado entero: se degrada a None."""
+    if not raw:
+        return None
+    try:
+        import json
+        value = json.loads(raw)
+        return value if isinstance(value, dict) else None
+    except (ValueError, TypeError):
+        return None
 
 
 @router.post("/import")
@@ -117,6 +142,7 @@ def list_findings(
     asset_id: Optional[int] = Query(None),
     supplier_id: Optional[int] = Query(None),
     source_document: Optional[str] = Query(None),
+    finding_type: Optional[str] = Query(None),
     limit: int = Query(50, le=200),
     offset: int = Query(0),
     db: Session = Depends(get_db),
@@ -138,6 +164,8 @@ def list_findings(
         query = query.filter(ExternalFinding.supplier_id == supplier_id)
     if source_document:
         query = query.filter(ExternalFinding.source_document == source_document)
+    if finding_type:
+        query = query.filter(ExternalFinding.finding_type == finding_type)
 
     total = query.count()
     items = query.order_by(ExternalFinding.detected_at.desc()).offset(offset).limit(limit).all()

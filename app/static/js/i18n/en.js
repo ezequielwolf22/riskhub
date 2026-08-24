@@ -3321,7 +3321,7 @@ const I18N_EN = {
   hub: {
     home: { dashboard: "Dashboard", executive: "Executive", heatmap: "Heatmap" },
     risk: { risks: "Registry", assets: "Assets", threats: "Threats", vulnerabilities: "Vulnerabilities", kris: "KRIs / KPIs", treatment: "Treatment", plan_director: "Strategic Plan" },
-    watch: { cve: "CVE", osint: "OSINT", external_findings: "External findings", architecture: "Arch. review", predictive: "Predictive", supplier_monitor: "Supplier monitor" },
+    watch: { visiox: "Digital watch", cve: "CVE", osint: "OSINT", external_findings: "External findings", architecture: "Arch. review", predictive: "Predictive", supplier_monitor: "Supplier monitor" },
     compliance: { normative: "Normative", controls: "Controls", soa: "SoA", policies: "ISMS Documents", audits: "Audits", nonconformities: "Non-conformities", legal: "Legal compliance", change_requests: "Changes" },
     events: { incidents: "Incidents" },
     bcp: { bcp: "BCP / BCM", ingest: "Cognitive ingestion" },

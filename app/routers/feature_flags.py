@@ -38,7 +38,7 @@ PLAN_MODULE_LIMITS: dict[str, Optional[set[str]]] = {
         "module_compliance", "module_reports",
         "module_suppliers", "module_nonconformities", "module_audits",
         "module_gdpr", "module_ai", "module_cve", "module_alerts",
-        "module_regwatch", "module_plan_director",
+        "module_regwatch", "module_plan_director", "module_visiox",
     },
     "enterprise": None,  # todos los modulos sin restriccion
 }
@@ -119,6 +119,12 @@ _DEFAULT_FLAGS = [
         "name": "module_alerts",
         "label": "Alertas por Email",
         "description": "Notificaciones automaticas por email.",
+    },
+    {
+        "name": "module_visiox",
+        "label": "Vigilancia digital (VisioX DRP)",
+        "description": "Digital Risk Protection: dominios fraudulentos, credenciales filtradas, "
+                       "menciones en dark web, higiene del perimetro e identidades expuestas.",
     },
     {
         "name": "module_cve",
