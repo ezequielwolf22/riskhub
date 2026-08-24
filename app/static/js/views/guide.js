@@ -47,7 +47,6 @@ const ViewGuide = {
     { id: 'alerts', title: 'Alertas (email, Teams, Power Automate)', icon: '🔔' },
     { id: 'integrations', title: 'Integraciones', icon: '🔌' },
     { id: 'clausulas-iso', title: 'Cláusulas ISO (IA)', icon: '📋' },
-    { id: 'visiox', title: 'Vigilancia digital (VisioX)', icon: '🔭' },
     { id: 'cve', title: 'CVE Monitor', icon: '🛡️' },
     { id: 'osint', title: 'OSINT - Huella Digital', icon: '🕵️' },
     { id: 'external-findings', title: 'Hallazgos Externos', icon: '🔗' },
@@ -165,7 +164,6 @@ const ViewGuide = {
       alerts: this._cAlerts,
       integrations: this._cIntegrations,
       'clausulas-iso': this._cClausulasIso,
-      visiox: this._cVisioX,
       cve: this._cCve,
       osint: this._cOsint,
       'external-findings': this._cExternalFindings,
@@ -240,7 +238,6 @@ const ViewGuide = {
         ['TPRM','Riesgo de terceros, cuestionarios ponderados, evaluaciones consolidadas, hallazgos con SLA automático.'],
         ['Incidentes','Ciclo de vida completo, clasificación P1-P4, flujo de notificación NIS2, vinculación a riesgos.'],
         ['Continuidad BCP/DRP','Procesos críticos, BIA, planes con 10 secciones, tests, mapa de dependencias interactivo Cytoscape.'],
-        ['Vigilancia digital (VisioX)','Digital Risk Protection: dominios que suplantan tu marca, credenciales filtradas, menciones en dark web, higiene del perímetro e identidades expuestas.'],
         ['CVE Monitor','Conexión NVD/NIST en tiempo real, análisis IA de CVEs contra el inventario, creación de riesgos con un clic.'],
         ['OSINT','Escaneo de emails, dominios, IPs y usuarios en fuentes abiertas. Pipeline automático de riesgos e incidentes.'],
         ['Vigilancia normativa','Monitorización automática de 11 fuentes regulatorias (EUR-Lex, BOE, ENISA, NIST...) con propagación.'],
@@ -1212,58 +1209,6 @@ const ViewGuide = {
       'Usa el Agente IA para asociar automáticamente las vulnerabilidades importadas al escenario de riesgo más relevante.',
     ])}
   `;},
-
-  get _cVisioX() { return `
-    ${this._p('La <strong>Vigilancia digital</strong> conecta RiskHub con <strong>VisioX</strong>, la plataforma de Digital Risk Protection de Cyberxia. Mientras el resto del SGSI mira hacia dentro (tus activos, tus controles), esta sección mira hacia fuera: qué está pasando con tu marca, tus dominios y tus credenciales <em>en internet</em>, donde tú no tienes control.')}
-    ${this._h('Qué trae de VisioX')}
-    <ul style="font-size:13px;padding-left:20px;margin:0 0 14px;">
-      <li><strong>Perímetro (SurfaceX):</strong> higiene técnica de tus dominios — certificados TLS caducados o a punto de caducar, SPF/DMARC ausentes o permisivos, dominios próximos a expirar, sin registro CAA. Cada hallazgo lleva su control ISO 27002 asociado (A.8.24, A.5.14, A.5.30, A.8.9).</li>
-      <li><strong>Credenciales (LeakX):</strong> credenciales de tu organización aparecidas en filtraciones, infostealers y combolists. Control A.5.17.</li>
-      <li><strong>Suplantación (PhishX):</strong> dominios registrados que imitan tu marca, con su score de riesgo, dónde se alojan y si ya fueron dados de baja. Control A.5.7.</li>
-      <li><strong>Dark web (DarkWatch):</strong> menciones de tu organización en foros, canales de Telegram, pastes y sitios de ransomware. Control A.5.7.</li>
-      <li><strong>Identidades (VipX):</strong> ejecutivos y personal con exposición detectada. Control A.6.3. Solo cruzan quienes tienen algún hallazgo: un padrón de empleados sin exposición no es información de riesgo.</li>
-    </ul>
-    ${this._h('Cómo se conecta')}
-    ${this._steps([
-      'En VisioX, un administrador emite una <strong>service key</strong> para tu organización (por SSH: <em>visiox-admin key-create --client-slug TUCLIENTE --name riskhub</em>). El token se muestra una sola vez.',
-      'En RiskHub ve a <strong>Vigilancia → Vigilancia digital</strong> y pulsa <strong>Conectar VisioX</strong>.',
-      'Pega la API key. RiskHub la valida contra VisioX <em>antes</em> de guardarla y te muestra a qué cliente pertenece: comprueba que es el tuyo antes de continuar.',
-      'Decide si quieres que los dominios que VisioX inventaria se den de alta automáticamente como activos.',
-      'Pulsa <strong>Sincronizar ahora</strong>. A partir de ahí se sincroniza sola cada 6 horas.',
-    ])}
-    ${this._tip('La API key se guarda cifrada y está atada a un único cliente de VisioX. No es posible, ni por error ni a propósito, traer los datos de otro cliente: el cliente lo impone VisioX a partir de la propia key, ignorando cualquier parámetro que envíe RiskHub.')}
-    ${this._h('Qué hace RiskHub con los hallazgos')}
-    <ul style="font-size:13px;padding-left:20px;margin:0 0 14px;">
-      <li><strong>Todos se guardan</strong> como hallazgos externos, tengan o no un activo asociado. Nada se pierde.</li>
-      <li><strong>Se enlazan a tu inventario</strong> por nombre de host. Si un hallazgo aparece "sin activo inventariado", es una señal de que te falta inventariarlo.</li>
-      <li><strong>Se genera un riesgo ISO 27005</strong> cuando el hallazgo es HIGH o CRITICAL, hay activo casado y es nuevo. El nivel lo calcula el motor determinista con la matriz de tu organización, no la fuente externa. Máximo 25 riesgos por sincronización para que un mal día en la fuente no inunde tu registro.</li>
-      <li><strong>Se abre un único incidente</strong> por sincronización agrupando todos los hallazgos críticos nuevos — nunca uno por hallazgo. P1 si hay credenciales o menciones en dark web; P2 en el resto.</li>
-      <li><strong>Se marcan como desactualizados</strong> los riesgos de los activos afectados, para que decidas si toca reanalizar. El conector nunca recalcula un residual por su cuenta.</li>
-    </ul>
-    ${this._h('Cierre de hallazgos')}
-    ${this._p('Cuando un hallazgo desaparece de VisioX (arreglaste el certificado, tumbaron el dominio), RiskHub lo marca como <strong>resuelto</strong> con su fecha — no lo borra, para que quede la historia y puedas medir cuánto tardas en cerrar. Si la sincronización llega incompleta o VisioX está caído, <strong>no se cierra nada</strong>: la ausencia de un dato no prueba que se haya resuelto. Verás un aviso en pantalla cuando esto ocurra.')}
-    ${this._h('Datos personales')}
-    ${this._p('Las credenciales filtradas, los fragmentos de foros y las identidades expuestas contienen datos personales. RiskHub los guarda <strong>cifrados</strong> y <strong>nunca</strong> los muestra en el listado ni los incluye en los prompts de la IA. Para verlos hay que pulsar <em>Ver datos protegidos</em>, lo que exige rol de administración y <strong>queda registrado en el log de auditoría</strong> con tu usuario y la hora. Trátalos en consecuencia: no los copies a documentos sin control de acceso.')}
-    ${this._h('Problemas frecuentes')}
-    <table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:16px;">
-      <thead><tr style="background:var(--brand-purple);color:#fff;">
-        <th style="padding:8px 12px;text-align:left;">Síntoma</th>
-        <th style="padding:8px 12px;text-align:left;">Causa probable</th>
-      </tr></thead>
-      <tbody>
-        <tr><td style="padding:8px 12px;font-weight:600;">"La API key de VisioX no es valida o ha sido revocada"</td>
-            <td style="padding:8px 12px;">La key se revocó en VisioX o se pegó mal. Pide una nueva y vuelve a configurarla.</td></tr>
-        <tr style="background:var(--bg-2);">
-            <td style="padding:8px 12px;font-weight:600;">La sincronización avisa de "inventario incompleto"</td>
-            <td style="padding:8px 12px;">VisioX respondió lento o cortó la respuesta. No se ha cerrado ningún hallazgo; se reintenta en la siguiente pasada.</td></tr>
-        <tr><td style="padding:8px 12px;font-weight:600;">Muchos hallazgos "sin activo inventariado"</td>
-            <td style="padding:8px 12px;">Los dominios de VisioX no están en tu inventario. Activa el alta automática de activos en la configuración, o inventaríalos a mano.</td></tr>
-        <tr style="background:var(--bg-2);">
-            <td style="padding:8px 12px;font-weight:600;">No se crean riesgos</td>
-            <td style="padding:8px 12px;">Solo se generan para hallazgos HIGH/CRITICAL con activo asociado y que sean nuevos. Revisa que el activo exista y que su nombre coincida con el host.</td></tr>
-      </tbody>
-    </table>
-  `; },
 
   get _cCve() { return `
     ${this._p('El <strong>CVE Monitor</strong> conecta RiskHub con la base de datos de vulnerabilidades NVD (NIST) en tiempo real. El agente IA analiza cada CVE contra tu inventario de activos y genera un análisis de riesgo completo: riesgo inherente, cobertura de controles, riesgo residual y acciones de mitigación.')}

@@ -786,18 +786,6 @@ const Api = {
     deleteConfig: () => Api.delete('/api/integrations/virustotal/config'),
     test: () => Api.post('/api/integrations/virustotal/test', {}),
   },
-  visiox: {
-    getConfig:  ()   => Api.get('/api/integrations/visiox/config'),
-    saveConfig: (d)  => Api.put('/api/integrations/visiox/config', d),
-    deleteConfig: () => Api.delete('/api/integrations/visiox/config'),
-    test:       ()   => Api.post('/api/integrations/visiox/test', {}),
-    sync:       ()   => Api.post('/api/integrations/visiox/sync', {}),
-    runs:       (n)  => Api.get(`/api/integrations/visiox/runs?limit=${n || 20}`),
-    summary:    ()   => Api.get('/api/integrations/visiox/summary'),
-    // La evidencia protegida (credenciales, identidades) va aparte a proposito:
-    // el listado nunca la sirve y cada lectura queda auditada.
-    evidence:   (id) => Api.get(`/api/integrations/visiox/findings/${id}/evidence`),
-  },
   risk_levels: {
     get:   ()       => Api.get('/api/risk-levels'),
     put:   (bands)  => Api.put('/api/risk-levels', bands),

@@ -166,39 +166,6 @@ def _match_cve_to_assets(db, cve_record: dict, org_id: int) -> list:
     return [id_to_asset[aid] for aid, _ in sorted(matched.items(), key=lambda x: -x[1])]
 
 
-def _run_visiox_sync() -> None:
-    """Sincronizacion periodica de los datos DRP de VisioX.
-
-    Itera SOLO las organizaciones que tienen la integracion configurada, en vez
-    de aplicar una config global a todas: la API key de VisioX pertenece a un
-    cliente concreto y compartirla entre tenants seria una fuga.
-    """
-    from app.database import SessionLocal
-    from app.services import visiox_sync_service
-
-    db = SessionLocal()
-    try:
-        org_ids = visiox_sync_service.orgs_with_visiox(db)
-        for org_id in org_ids:
-            cfg = visiox_sync_service.get_config(db, org_id)
-            if not cfg or not cfg.get("enabled") or not cfg.get("auto_sync"):
-                continue
-            try:
-                result = visiox_sync_service.sync_organization(
-                    db, org_id, triggered_by="scheduler"
-                )
-                logger.info(
-                    "VisioX org=%s: %s (leidos=%s nuevos=%s actualizados=%s cerrados=%s)",
-                    org_id, result["status"], result["items_read"],
-                    result["created"], result["updated"], result["closed"],
-                )
-            except Exception:  # noqa: BLE001
-                # Un tenant que falla no puede parar a los demas.
-                logger.exception("Sync de VisioX fallido para la org %s", org_id)
-    finally:
-        db.close()
-
-
 def _run_cve_auto_scan() -> None:
     """Escaneo automatico diario de CVEs: busca + auto-genera riesgos."""
     from app.database import SessionLocal
@@ -2828,14 +2795,6 @@ def start(interval_hours: int = 1) -> BackgroundScheduler:
         trigger=IntervalTrigger(hours=24),  # se autofiltra por day==1
         id="monthly_report",
         name="Informe mensual de seguridad por email",
-        replace_existing=True,
-        misfire_grace_time=3600,
-    )
-    _scheduler.add_job(
-        func=_run_visiox_sync,
-        trigger=IntervalTrigger(hours=6),
-        id="visiox_drp_sync",
-        name="Sincronizacion de vigilancia digital (VisioX DRP)",
         replace_existing=True,
         misfire_grace_time=3600,
     )

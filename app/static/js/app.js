@@ -40,7 +40,6 @@ const LegacyRedirects = {
   cve: 'watch-hub/cve',
   osint: 'watch-hub/osint',
   'external-findings': 'watch-hub/external-findings',
-  visiox: 'watch-hub/visiox',
   'architecture-review': 'watch-hub/architecture-review',
   predictive: 'watch-hub/predictive',
   compliance: 'compliance-hub/compliance',

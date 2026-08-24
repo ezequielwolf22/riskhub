@@ -2721,7 +2721,6 @@ class ExternalFindingSource(str, PyEnum):
     MANUAL = "manual"
     ARCHITECTURE_REVIEW = "architecture_review"
     SUPPLIER_MONITOR = "supplier_monitor"  # v4.3.0 monitoreo periodico de proveedores
-    VISIOX = "visiox"                      # v6.7.0 Digital Risk Protection (VisioX)
 
 
 class ExternalFinding(Base):
@@ -2753,61 +2752,11 @@ class ExternalFinding(Base):
     detected_at = Column(DateTime, nullable=True)
     resolved_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
-    # --- v6.7.0 Digital Risk Protection (VisioX) ---
-    # Subtipo dentro de una fuente. Un hallazgo DRP puede ser higiene de TLS,
-    # credencial filtrada o suplantacion de marca, y la UI necesita separarlos
-    # sin multiplicar los valores del enum de fuente (anadir valores a un Enum
-    # de SQLAlchemy exige ALTER TYPE en PostgreSQL; anadir columnas no).
-    finding_type = Column(String(64), nullable=True, index=True)
-    external_url = Column(String(512), nullable=True)   # enlace de vuelta al panel de origen
-    # Evidencia estructurada del hallazgo. Se parte en dos por privacidad:
-    #   evidence_json      -> JSON en claro, sin datos personales. Alimenta la UI
-    #                         y puede entrar en los prompts de la IA.
-    #   evidence_encrypted -> JSON cifrado con Fernet. Aqui viven las credenciales
-    #                         filtradas y las identidades. NUNCA se sirve en el
-    #                         listado ni entra en un prompt: exige una peticion
-    #                         explicita de un rol autorizado, que queda auditada.
-    evidence_json = Column(Text, nullable=True)
-    evidence_encrypted = Column(Text, nullable=True)
-    is_sensitive = Column(Boolean, default=False, index=True)
-    # Ultima vez que la fuente confirmo el hallazgo. Permite cerrar lo que
-    # desaparecio de origen sin borrarlo, y solo tras un snapshot completo.
-    last_seen_at = Column(DateTime, nullable=True)
 
     asset = relationship("Asset")
     risk = relationship("Risk")
     incident = relationship("Incident")
     supplier_ref = relationship("Supplier", foreign_keys=[supplier_id])
-
-
-class IntegrationSyncRun(Base):
-    """Traza de cada ejecucion de sincronizacion con una fuente externa.
-
-    Sin esto, un sync que lleve tres semanas fallando se descubre porque el
-    cliente pregunta por que no ve nada nuevo.
-    """
-    __tablename__ = "integration_sync_runs"
-    id = Column(Integer, primary_key=True)
-    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=False, index=True)
-    integration = Column(String(64), nullable=False, index=True)   # "visiox"
-    status = Column(String(16), default="running")                 # running|ok|error
-    started_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
-    finished_at = Column(DateTime, nullable=True)
-    duration_ms = Column(Integer, nullable=True)
-    pages_fetched = Column(Integer, default=0)
-    items_read = Column(Integer, default=0)
-    created = Column(Integer, default=0)
-    updated = Column(Integer, default=0)
-    closed = Column(Integer, default=0)
-    risks_created = Column(Integer, default=0)
-    incidents_created = Column(Integer, default=0)
-    assets_created = Column(Integer, default=0)
-    # complete=False significa que el snapshot llego truncado: en ese caso NO se
-    # cierra nada, porque la ausencia de un hallazgo no prueba que se resolviera.
-    complete = Column(Boolean, default=False)
-    error_message = Column(Text, nullable=True)
-    triggered_by = Column(String(32), nullable=True)               # scheduler|manual
-    triggered_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
 
 
 # ---------- MANAGEMENT REVIEW (ISO 27001 cl. 9.3) ----------
