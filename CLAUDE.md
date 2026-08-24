@@ -155,8 +155,18 @@ con `psql -f` (golang-migrate esta desincronizado: `schema_migrations` va por la
 `/opt/visiox/backups/predeploy_20260824_214650.sql.gz`; rollback = restaurar
 `/opt/visiox/bin/visiox.bak.20260824_214650`. **OJO**: el dominio que daba
 `OPERATIONS.md` (`vision.cyberxiasec.com`) esta MUERTO — apunta a un parking de
-DonDominio. El real es `visiox.app`. RiskHub (rama `feat/visiox-drp`) **aun no
-desplegado**: pendiente de merge y de `bash /opt/riskhub/deploy.sh`.
+DonDominio. El real es `visiox.app`.
+RiskHub prod (91.99.83.202) desplegado el mismo dia — imagen
+`riskhub:20260824_215749`, rollback con
+`bash /opt/riskhub/scripts/rollback.sh riskhub:20260824_215749` y BD previa en
+`/srv/data/riskhub_predeploy_20260824_235748.db` (integridad verificada).
+Integracion configurada en la organizacion 5 (Once For All) y primera
+sincronizacion hecha: **8668 hallazgos, 656 activos dados de alta, 13 riesgos y
+1 incidente**; 2923 hallazgos sensibles, todos con la evidencia cifrada.
+El token de la service key NO esta en el repo: se guardo en
+`~/.visiox-riskhub-key` (chmod 600) en la maquina del operador y cifrado con
+Fernet en `integration_configs` de la BD. Si se pierde, se revoca con
+`visiox-admin key-revoke --key-id audxeohekzdj4` y se emite otro.
 Deploy previo (91.99.83.202) el 2026-08-05 — Fases 3 y 4 del rework del BCP.
 Fase 4 (ingesta reconstruye jerarquia): el motor de ingesta ya no vuelca procesos
 planos. `business_process` gana `business_unit` y `parent_process_id` (referencia
