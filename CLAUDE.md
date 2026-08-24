@@ -117,11 +117,19 @@ Multi-usuario con roles.
   - Tests: `test_method_formula.py`, `test_method_registry.py`, `test_method_wiring.py`, `test_method_conformance.py`.
 - [x] Multi-tenancy: la organizacion enfocada por el superadmin manda (2026-07-22). Las lecturas ya respetaban `X-Active-Org` pero las **escrituras** usaban la org propia del superadmin: el POST devolvia 200 y el dato desaparecia de la vista del cliente (365 usos de `current_user.organization_id` en routers). Arreglo **central** en `get_current_user`: si hay org enfocada, esa es la del usuario durante la peticion, via `set_committed_value` para que **nunca** se escriba en su fila. `real_org_id()` para los pocos sitios que necesitan la org de ORIGEN (proteger que el superadmin no borre la suya). Aislamiento auditado: `tests/test_tenant_isolation.py` (incluye el vector de un admin normal falsificando `X-Active-Org`) + barrido de 194 rutas GET sin fugas.
 
+- [x] Vigilancia digital — conector VisioX DRP (2026-08-24, v6.7.0). RiskHub miraba solo hacia dentro; este conector trae lo que pasa FUERA del perimetro. Principio rector: la fuente externa aporta EVIDENCIA, el motor determinista decide — el conector nunca calcula un nivel ni recalcula un residual, marca `stale` y deja que `risk_recalc_service` haga su trabajo.
+  - **Lado VisioX** (repo `~/projects/VisioX`, rama `feat/service-api-keys`): tabla `service_api_keys` (migracion 0015; token `vsx_<key_id>_<secret>`, en BD solo `sha256(secret)`), `ServiceKeyMiddleware` con header propio `X-VisioX-Key` (no `Authorization: Bearer`, que `auth.Middleware` intercepta y parsea como JWT antes de llegar), arbol `/api/v1/svc/{whoami,findings,summary,assets}` y subcomandos `visiox-admin key-create|key-list|key-revoke`. **El aislamiento es lo critico**: el `client_id` sale de la FILA de la key y el middleware BORRA `X-Active-Client-ID` y `?_cid` del request — sin eso el portador se cambiaba de cliente con una cabecera, y una key sin cliente resuelto habria leido TODOS los clientes (los repos tratan `clientID` vacio como "sin filtro"). Allowlist blanca de ruta+scope y solo GET. `internal/store/export_repo.go` con consultas propias: los repos de la UI topan en silencio (LeakX cae a 200 si pides mas de 1000) y truncaban el snapshot al 7%.
+  - **Lado RiskHub**: `services/visiox_service.py` (cliente urllib, base URL fija en codigo para no abrir un SSRF, corta ante cursor repetido o tope de paginas marcando el snapshot INCOMPLETO) + `services/visiox_sync_service.py` (upsert real por `(org, source, external_id)`; cierre NO destructivo — solo si `complete`, porque la ausencia no prueba la resolucion; reabre lo que reaparece) + `routers/integrations_visiox.py` + vista `visiox.js` (pestana en el hub de Vigilancia) + job cada 6h que itera SOLO las orgs configuradas + flag `module_visiox` (pro/enterprise).
+  - **Privacidad**: VisioX marca con `sensitive` lo que lleva datos personales; esa evidencia va a `ExternalFinding.evidence_encrypted` (Fernet). El listado NUNCA la sirve (solo `has_protected_evidence`); revelarla exige endpoint aparte, rol admin y queda en el log de auditoria. Columnas nuevas: `finding_type`, `external_url`, `evidence_json`, `evidence_encrypted`, `is_sensitive`, `last_seen_at`. `VISIOX` entra en `ExternalFindingSource` con un `ALTER TYPE` en `seed.py` guardado por `is_sqlite` (en PostgreSQL el enum es un tipo nativo y una fila con valor no declarado tumba con `LookupError` el listado entero de esa org).
+  - **Reglas**: riesgo solo si HIGH/CRITICAL con activo casado, 5 amenazas sinteticas POR FAMILIA (`DRP-ASM-TLS`, `DRP-LEAKX-CREDS`...) y tope de 25 por sync; UN incidente por ejecucion agrupando los criticos, enlazado por FK y no por marcador en el texto.
+  - **Tenant**: VisioX `onceforall` / `47a8c04e-b531-4424-b9fb-0cf91ae37e3d` <-> RiskHub `Organization id=5 "Once For All"`. Key emitida: `key_id audxeohekzdj4`.
+  - Validado E2E contra la API real (2026-08-24): 8686 hallazgos, 656 activos, 13 riesgos, 1 incidente; segunda pasada 0 creados (idempotente); barrido de los 2941 hallazgos sensibles (2086 con contrasena) = 0 datos personales en claro; cero residuo tras limpiar. Tests: `test_visiox_sync.py` (22).
+
 ### Frontend
 
 - [x] SPA hash-based (`app/static/`)
 - [x] Vistas: dashboard, heatmap, assets, threats, vulnerabilities, risks, controls, reports, context, users, suppliers, incidents, nonconformities, tasks, policies, audits, gdpr, compliance, alerts, integrations, audit, ai-chat, ai-documents, onboarding, guide, organizations
-- [x] Vistas nuevas: evidence, webhooks, external-findings, predictive, ccm, itsm-config, trust-portal, magerit, executive, architecture-review, cve, osint, feature-flags, ops (operaciones: consumo IA, jobs, errores, backups), treatment (Cockpit de Tratamiento), plan-director (Plan Director)
+- [x] Vistas nuevas: evidence, webhooks, external-findings, predictive, ccm, itsm-config, trust-portal, magerit, executive, architecture-review, cve, osint, visiox (vigilancia digital DRP), feature-flags, ops (operaciones: consumo IA, jobs, errores, backups), treatment (Cockpit de Tratamiento), plan-director (Plan Director)
 - [x] Organizaciones: badges de plan con colores, modulos incluidos/bloqueados segun plan, plan selector actualizado (free/starter/pro/enterprise)
 - [x] Integraciones: SSO config form, SharePoint config + browser, ERP webhooks config real (reemplaza placeholder)
 - [x] Docs IA: modal de clausulas ISO extraidas con confianza y link a controles
@@ -140,7 +148,16 @@ Multi-usuario con roles.
 - [ ] Pruebas end-to-end manuales de las vistas nuevas con usuario real
 - [ ] Backlog del modulo Plan Director/Tratamiento: priorizado en `RISKHUB_TREATMENT_MODULE_SPEC.md` (seccion "Backlog de mejoras") — no construir hasta validar con uso real
 
-Deploy: prod (91.99.83.202) el 2026-08-03 — Fase 2 del rework del BCP: grafo de
+Deploy: VisioX prod (178.105.0.113 / https://visiox.app) el 2026-08-24 — API de
+servicio con service keys + endpoints `/api/v1/svc/*`. Migracion 0015 aplicada
+con `psql -f` (golang-migrate esta desincronizado: `schema_migrations` va por la
+3 y el repo por la 15). Backup previo en
+`/opt/visiox/backups/predeploy_20260824_214650.sql.gz`; rollback = restaurar
+`/opt/visiox/bin/visiox.bak.20260824_214650`. **OJO**: el dominio que daba
+`OPERATIONS.md` (`vision.cyberxiasec.com`) esta MUERTO — apunta a un parking de
+DonDominio. El real es `visiox.app`. RiskHub (rama `feat/visiox-drp`) **aun no
+desplegado**: pendiente de merge y de `bash /opt/riskhub/deploy.sh`.
+Deploy previo (91.99.83.202) el 2026-08-03 — Fase 2 del rework del BCP: grafo de
 dependencias proceso->proceso. `bcp_hierarchy_service.build_impact_analysis` +
 `GET /api/bcp/impact-analysis`: propagacion de impacto transitiva (si cae X,
 afecta a N procesos), orden de recuperacion (Kahn), camino critico por RTO (DP
