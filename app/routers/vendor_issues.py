@@ -484,12 +484,15 @@ def update_vendor_issue(
 
     update_data = body.model_dump(exclude_none=True)
 
-    # Si se cierra / mitiga / acepta, registrar fecha de cierre
+    # Si se cierra / mitiga / acepta, registrar fecha de cierre y aprobacion de Seguridad
     new_status = update_data.get("status")
     _closed_values = {s.value for s in _CLOSED_STATUSES}
     _new_status_val = new_status.value if isinstance(new_status, VendorIssueStatus) else new_status
     if _new_status_val in _closed_values and not issue.closed_at:
         update_data["closed_at"] = datetime.now(timezone.utc)
+        # Punto 9: el cierre queda sellado con quien lo aprobo (require_analyst = Seguridad)
+        issue.closure_approved_by_id = current_user.id
+        issue.closure_approved_at = datetime.now(timezone.utc)
 
     for field, value in update_data.items():
         setattr(issue, field, value)
@@ -506,6 +509,38 @@ def update_vendor_issue(
         except Exception as _e:
             logger.warning("recompute after issue close failed: %s", _e)
 
+    return issue
+
+
+@router.post("/{iid}/approve-closure", response_model=VendorIssueOut)
+def approve_closure(
+    iid: int,
+    body: dict = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_analyst),
+):
+    """Cierra un hallazgo con aprobacion formal de Seguridad (punto 9).
+
+    Marca el hallazgo como completado y sella quien lo aprobo, desde la misma caja.
+    """
+    issue = db.query(VendorIssue).filter(VendorIssue.id == iid).first()
+    if not issue or not check_org_access(issue.organization_id, current_user):
+        raise HTTPException(404, "Hallazgo no encontrado")
+    now = datetime.now(timezone.utc)
+    issue.status = VendorIssueStatus.CLOSED
+    issue.closed_at = issue.closed_at or now
+    issue.closure_approved_by_id = current_user.id
+    issue.closure_approved_at = now
+    if body and body.get("resolution_notes"):
+        issue.resolution_notes = body["resolution_notes"]
+    db.commit()
+    db.refresh(issue)
+    log_action(db, current_user.id, "approve_closure", "vendor_issue", str(issue.id))
+    try:
+        from app.services.supplier_lifecycle_service import recompute_supplier_risk_profile
+        recompute_supplier_risk_profile(db, issue.supplier_id, triggered_by="vendor_issue_closure_approved")
+    except Exception as _e:
+        logger.warning("recompute after closure approval failed: %s", _e)
     return issue
 
 

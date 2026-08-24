@@ -29,14 +29,31 @@ def list_suppliers(
     current_user: User = Depends(get_current_user),
     risk_level: Optional[str] = None,
     q: Optional[str] = None,
+    business_importance_level: Optional[str] = None,
+    security_risk_level: Optional[str] = None,
+    operating_region: Optional[str] = None,
+    security_status: Optional[str] = None,
+    review_status: Optional[str] = None,
 ):
     query = filter_by_org(db.query(Supplier), Supplier, current_user)
     if risk_level:
         query = query.filter(Supplier.risk_level == risk_level)
+    if business_importance_level:
+        query = query.filter(Supplier.business_importance_level == business_importance_level)
+    if security_risk_level:
+        query = query.filter(Supplier.security_risk_level == security_risk_level)
+    if operating_region:
+        query = query.filter(Supplier.operating_region == operating_region)
+    if security_status:
+        query = query.filter(Supplier.security_status == security_status)
     if q:
         like = f"%{q}%"
         query = query.filter(Supplier.name.ilike(like))
-    return query.order_by(Supplier.name).all()
+    result = query.order_by(Supplier.name).all()
+    # review_status es computado (punto 5): se filtra en Python
+    if review_status:
+        result = [s for s in result if s.review_status == review_status]
+    return result
 
 
 @router.get("/stats/summary")
@@ -275,6 +292,9 @@ def create_supplier(body: SupplierIn, db: Session = Depends(get_db),
         # v4.3.0
         "cc_email", "additional_contacts", "location", "department",
         "business_importance", "internal_owner_id",
+        # v6.7.0 — Suppliers Module Review
+        "business_importance_level", "security_risk_level", "backup_owner_id",
+        "operating_region", "review_frequency", "security_status", "agreement_status",
     )
     for _f in _tprm_fields:
         _v = getattr(body, _f, None)
@@ -313,11 +333,41 @@ def update_supplier(supplier_id: int, body: SupplierUpdate,
         raise HTTPException(404, _t("suppliers.not_found", lang))
     old_score = s.score
     old_risk_level = s.risk_level
-    for field, value in body.model_dump(exclude_none=True).items():
+    # Snapshot para el timeline (puntos 6/12/18)
+    _before = {
+        "security_status": s.security_status,
+        "owner_id": s.owner_id,
+        "backup_owner_id": s.backup_owner_id,
+        "security_risk_level": s.security_risk_level,
+        "business_importance_level": s.business_importance_level,
+        "agreement_status": s.agreement_status,
+    }
+    payload = body.model_dump(exclude_none=True)
+    for field, value in payload.items():
         setattr(s, field, value)
+    # Sellar quien y cuando cambio el estado de seguridad
+    if "security_status" in payload and payload["security_status"] != _before["security_status"]:
+        s.security_status_changed_at = datetime.now(timezone.utc)
+        s.security_status_changed_by_id = current_user.id
     db.commit()
     db.refresh(s)
     log_action(db, current_user.id, "update", "supplier", str(s.id))
+
+    # Timeline automatico de cambios relevantes (punto 12)
+    try:
+        _log_supplier_change_events(db, s, _before, payload, current_user.id)
+    except Exception as _e:
+        logger.warning("Supplier timeline log failed for %s: %s", s.code, _e)
+
+    # Notificacion post-review cuando el estado de seguridad pasa a una DECISION (punto 11)
+    try:
+        from app.services.tprm_notifications_service import DECISION_STATUSES, notify_security_decision
+        if ("security_status" in payload
+                and payload["security_status"] != _before["security_status"]
+                and s.security_status in DECISION_STATUSES):
+            notify_security_decision(db, s, s.security_status, user_id=current_user.id)
+    except Exception as _e:
+        logger.warning("Post-review notify failed for %s: %s", s.code, _e)
 
     # Auto-crear riesgo ISO 27005 cuando la puntuacion baja al umbral critico
     try:
@@ -366,6 +416,162 @@ def _trigger_supplier_score_update(supplier_id: int, org_id: int) -> None:
             db2.close()
 
     _SUPPLIER_EXECUTOR.submit(_recalc)
+
+
+def _log_supplier_change_events(db: Session, s: Supplier, before: dict,
+                                payload: dict, user_id: int) -> None:
+    """Registra en el timeline los cambios relevantes de un PATCH (punto 12)."""
+    from app.services import supplier_events_service as events
+
+    if "security_status" in payload and payload["security_status"] != before["security_status"]:
+        events.log_event_safe(
+            db, s, "status_change",
+            f"Estado de seguridad: {before['security_status'] or '—'} -> {s.security_status}",
+            detail={"from": before["security_status"], "to": s.security_status},
+            source="auto", user_id=user_id,
+        )
+    if ("owner_id" in payload and payload["owner_id"] != before["owner_id"]) or \
+       ("backup_owner_id" in payload and payload["backup_owner_id"] != before["backup_owner_id"]):
+        events.log_event_safe(
+            db, s, "ownership_change", "Cambio de propiedad del proveedor",
+            detail={
+                "owner_from": before["owner_id"], "owner_to": s.owner_id,
+                "backup_from": before["backup_owner_id"], "backup_to": s.backup_owner_id,
+            },
+            source="auto", user_id=user_id,
+        )
+    if "security_risk_level" in payload and payload["security_risk_level"] != before["security_risk_level"]:
+        events.log_event_safe(
+            db, s, "risk_reclassified",
+            f"Riesgo de seguridad: {before['security_risk_level'] or '—'} -> {s.security_risk_level}",
+            detail={"from": before["security_risk_level"], "to": s.security_risk_level},
+            source="auto", user_id=user_id,
+        )
+    if "agreement_status" in payload and payload["agreement_status"] != before["agreement_status"]:
+        events.log_event_safe(
+            db, s, "contract_change",
+            f"Estado del acuerdo: {before['agreement_status'] or '—'} -> {s.agreement_status}",
+            detail={"from": before["agreement_status"], "to": s.agreement_status},
+            source="auto", user_id=user_id,
+        )
+
+
+def _resolve_ai(db, current_user, lang):
+    """Devuelve (api_key, model) o lanza 400 si no hay clave configurada."""
+    from app.models import AiConfig
+    from app.routers.ai_config import resolve_api_key
+    cfg = db.query(AiConfig).filter(AiConfig.organization_id == current_user.organization_id).first()
+    key = resolve_api_key(cfg)
+    if not key:
+        raise HTTPException(400, _t("suppliers.api_key_missing", lang))
+    model = (cfg.model if cfg else None) or "claude-opus-4-6"
+    return key, model
+
+
+@router.post("/{supplier_id}/ai-classify")
+def ai_classify_supplier(supplier_id: int, request: Request,
+                         db: Session = Depends(get_db),
+                         current_user: User = Depends(require_analyst)):
+    """Asistente IA de clasificacion (punto 14). Advisory: Seguridad aprueba."""
+    lang = get_lang(request)
+    s = db.query(Supplier).filter(Supplier.id == supplier_id).first()
+    if not s or not check_org_access(s.organization_id, current_user):
+        raise HTTPException(404, _t("suppliers.not_found", lang))
+    key, model = _resolve_ai(db, current_user, lang)
+    from app.services import tprm_ai_assistants_service as ai
+    result = ai.suggest_classification(db, s, key, model, lang=lang)
+    log_action(db, current_user.id, "ai_classify", "supplier", str(s.id))
+    return result
+
+
+@router.post("/{supplier_id}/ai-analyze")
+def ai_analyze_supplier(supplier_id: int, request: Request,
+                        db: Session = Depends(get_db),
+                        current_user: User = Depends(require_analyst)):
+    """Asistente IA de analisis del proveedor (punto 14): huecos + acciones."""
+    lang = get_lang(request)
+    s = db.query(Supplier).filter(Supplier.id == supplier_id).first()
+    if not s or not check_org_access(s.organization_id, current_user):
+        raise HTTPException(404, _t("suppliers.not_found", lang))
+    key, model = _resolve_ai(db, current_user, lang)
+    from app.services import tprm_ai_assistants_service as ai
+    result = ai.analyze_supplier(db, s, key, model, lang=lang)
+    log_action(db, current_user.id, "ai_analyze", "supplier", str(s.id))
+    return result
+
+
+@router.post("/{supplier_id}/ai-review-assistant")
+def ai_review_assistant(supplier_id: int, request: Request,
+                        db: Session = Depends(get_db),
+                        current_user: User = Depends(require_analyst)):
+    """Asistente IA de revision (punto 14): sintesis del historial + recomendaciones."""
+    lang = get_lang(request)
+    s = db.query(Supplier).filter(Supplier.id == supplier_id).first()
+    if not s or not check_org_access(s.organization_id, current_user):
+        raise HTTPException(404, _t("suppliers.not_found", lang))
+    key, model = _resolve_ai(db, current_user, lang)
+    from app.services import tprm_ai_assistants_service as ai
+    result = ai.review_assistant(db, s, key, model, lang=lang)
+    log_action(db, current_user.id, "ai_review_assistant", "supplier", str(s.id))
+    return result
+
+
+@router.get("/{supplier_id}/gaps")
+def supplier_gaps(supplier_id: int, request: Request,
+                  db: Session = Depends(get_db),
+                  current_user: User = Depends(get_current_user)):
+    """Huecos deterministas del proveedor (sin IA): datos/acuerdos/evaluaciones/revisiones."""
+    lang = get_lang(request)
+    s = db.query(Supplier).filter(Supplier.id == supplier_id).first()
+    if not s or not check_org_access(s.organization_id, current_user):
+        raise HTTPException(404, _t("suppliers.not_found", lang))
+    from app.services.tprm_ai_assistants_service import compute_gaps
+    return compute_gaps(db, s)
+
+
+@router.get("/{supplier_id}/events")
+def list_supplier_events(supplier_id: int, request: Request,
+                         db: Session = Depends(get_db),
+                         current_user: User = Depends(get_current_user)):
+    """Timeline / historial del proveedor (punto 12)."""
+    from app.services import supplier_events_service as events
+    lang = get_lang(request)
+    s = db.query(Supplier).filter(Supplier.id == supplier_id).first()
+    if not s or not check_org_access(s.organization_id, current_user):
+        raise HTTPException(404, _t("suppliers.not_found", lang))
+    rows = events.list_events(db, supplier_id, s.organization_id)
+    return [
+        {
+            "id": e.id, "event_type": e.event_type, "title": e.title,
+            "description": e.description, "detail": e.detail,
+            "occurred_at": e.occurred_at, "source": e.source,
+            "ref_type": e.ref_type, "ref_id": e.ref_id,
+            "created_by_id": e.created_by_id,
+        }
+        for e in rows
+    ]
+
+
+@router.post("/{supplier_id}/events", status_code=201)
+def create_supplier_event(supplier_id: int, body: dict, request: Request,
+                          db: Session = Depends(get_db),
+                          current_user: User = Depends(require_analyst)):
+    """Anade una entrada manual al timeline del proveedor (punto 12)."""
+    from app.services import supplier_events_service as events
+    lang = get_lang(request)
+    s = db.query(Supplier).filter(Supplier.id == supplier_id).first()
+    if not s or not check_org_access(s.organization_id, current_user):
+        raise HTTPException(404, _t("suppliers.not_found", lang))
+    title = (body.get("title") or "").strip()
+    if not title:
+        raise HTTPException(422, "title required")
+    ev = events.log_event(
+        db, s, body.get("event_type") or "note", title,
+        description=body.get("description"), detail=body.get("detail"),
+        source="manual", user_id=current_user.id,
+    )
+    log_action(db, current_user.id, "create", "supplier_event", str(ev.id))
+    return {"id": ev.id, "occurred_at": ev.occurred_at}
 
 
 def _auto_gdpr_dpa_task(db: Session, supplier: Supplier, org_id: int, created_by_id: int) -> None:

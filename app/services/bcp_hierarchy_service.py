@@ -379,6 +379,113 @@ def build_impact_analysis(db: Session, org_id: Optional[int]) -> dict:
     }
 
 
+def build_process_dossier(db: Session, org_id: Optional[int], pid: int) -> Optional[dict]:
+    """Todo sobre un proceso en un sitio: jerarquia, BIA, RTO efectivo,
+    dependencias (y quien depende de el), escenarios, estrategias, planes,
+    pruebas y hallazgos de coherencia. Alimenta el panel unico de Fase 3."""
+    from app.models import (BCMScenario, BCMScenarioAssessment, BCPDependency,
+                            BCPPlan, BCPStrategy, BCPTest, BusinessProcess)
+    from app.services.bcp_service import bia_completeness
+
+    p = db.get(BusinessProcess, pid)
+    if not p or p.organization_id != org_id:
+        return None
+
+    procs = db.query(BusinessProcess).filter_by(organization_id=org_id).all()
+    pmap = {x.id: x for x in procs}
+    proc_rto = {x.id: _num(x.rto_hours) for x in procs}
+    deps = db.query(BCPDependency).filter_by(organization_id=org_id).all()
+
+    my_deps = [d for d in deps if d.process_id == pid]
+    grouped: dict = {}
+    crit_dep_rtos = []
+    for d in my_deps:
+        grouped.setdefault(d.dependency_type or "other", []).append({
+            "id": d.id, "name": d.name, "is_critical": bool(d.is_critical),
+            "rto_hours": d.rto_hours,
+            "depends_on_process": pmap[d.depends_on_process_id].name
+            if getattr(d, "depends_on_process_id", None) in pmap else None,
+            "recovery_sequence": getattr(d, "recovery_sequence", None),
+            "alternative": getattr(d, "alternative", None),
+        })
+        if d.is_critical:
+            crit_dep_rtos.append(_dep_rto(d, proc_rto))
+
+    depended_on_by = [{"id": pmap[d.process_id].id, "name": pmap[d.process_id].name}
+                      for d in deps
+                      if getattr(d, "depends_on_process_id", None) == pid
+                      and d.process_id in pmap]
+
+    children = [{"id": c.id, "name": c.name, "criticality": c.criticality,
+                 "rto_hours": c.rto_hours}
+                for c in procs if getattr(c, "parent_process_id", None) == pid]
+    parent = None
+    if getattr(p, "parent_process_id", None) in pmap:
+        par = pmap[p.parent_process_id]
+        parent = {"id": par.id, "name": par.name}
+
+    declared = _num(p.rto_hours)
+    eff = _effective_rto(declared, crit_dep_rtos)
+
+    strategies = db.query(BCPStrategy).filter_by(
+        organization_id=org_id, process_id=pid).all()
+    all_plans = db.query(BCPPlan).filter_by(organization_id=org_id).all()
+    plans = [pl for pl in all_plans if pid in (pl.process_ids or [])]
+    all_tests = db.query(BCPTest).filter_by(organization_id=org_id).all()
+    tests = [t for t in all_tests if pid in (t.process_ids or [])]
+
+    scen = {s.id: s for s in db.query(BCMScenario).filter_by(organization_id=org_id).all()}
+    assessments = db.query(BCMScenarioAssessment).filter_by(
+        organization_id=org_id, process_id=pid).all()
+
+    node = {
+        "effective_rto": eff,
+        "has_strategy": bool(strategies),
+        "has_plan": bool(plans),
+        "test_ok": any(
+            t.conducted_at and
+            (datetime.now(timezone.utc) - t.conducted_at.replace(tzinfo=timezone.utc)).days <= 365
+            for t in tests),
+    }
+    findings = _process_findings(p, node, my_deps, children, proc_rto)
+
+    try:
+        bia = bia_completeness(None, p)
+    except Exception:
+        bia = {"pct": 0, "missing": []}
+
+    return {
+        "id": p.id, "name": p.name, "description": p.description,
+        "criticality": p.criticality, "business_unit": getattr(p, "business_unit", None),
+        "location_id": getattr(p, "location_id", None),
+        "rto_hours": p.rto_hours, "rpo_hours": p.rpo_hours, "mtpd_hours": p.mtpd_hours,
+        "declared_rto": declared, "effective_rto": eff,
+        "rto_gap": bool(eff is not None and declared is not None and eff > declared),
+        "weighted_impact": getattr(p, "weighted_impact", None),
+        "impact_band": getattr(p, "impact_band", None),
+        "bia_pct": bia["pct"], "bia_missing": bia.get("missing", []),
+        "source": getattr(p, "source", None),
+        "import_confidence": getattr(p, "import_confidence", None),
+        "needs_review": bool(getattr(p, "needs_review", False)),
+        "parent": parent, "children": children,
+        "dependencies": grouped, "dep_count": len(my_deps),
+        "depended_on_by": depended_on_by,
+        "strategies": [{"id": s.id, "name": s.name, "strategy_type": s.strategy_type,
+                        "implementation_status": s.implementation_status} for s in strategies],
+        "plans": [{"id": pl.id, "code": pl.code, "name": pl.name,
+                   "status": pl.status, "version": pl.version} for pl in plans],
+        "tests": [{"id": t.id, "code": t.code, "test_type": t.test_type,
+                   "result": t.result,
+                   "conducted_at": t.conducted_at.isoformat() if t.conducted_at else None}
+                  for t in tests],
+        "scenarios": [{"id": a.id, "scenario_name": scen[a.scenario_id].name
+                       if a.scenario_id in scen else None,
+                       "rto_label": a.rto_label, "weighted_impact": a.weighted_impact,
+                       "impact_band": a.impact_band} for a in assessments],
+        "findings": findings,
+    }
+
+
 def _find_cycles(depends_on: dict) -> list:
     """Devuelve algunas listas de ids que forman ciclo (deteccion por DFS)."""
     WHITE, GRAY, BLACK = 0, 1, 2

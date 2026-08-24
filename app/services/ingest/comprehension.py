@@ -34,7 +34,7 @@ logger = logging.getLogger("riskhub.ingest.comprehension")
 # Version del prompt de extraccion. Al cambiar los prompts se sube este numero
 # para invalidar la cache de lecturas (una lectura vieja podria no reflejar las
 # reglas nuevas). Es lo que permite que la cache por SHA sea segura.
-EXTRACTION_PROMPT_VERSION = "4"
+EXTRACTION_PROMPT_VERSION = "5"
 
 DOC_KINDS = ("bia", "policy", "bcp", "drp", "test_report", "exercise_programme",
              "contact_list", "supplier_list", "risk_assessment", "other")
@@ -382,7 +382,24 @@ DEPENDENCIAS (metodo ISO/TS 22317) — se modelan POR PROCESO, en categorias:
   proceso (p.ej. "corre sobre AWS", "telefonia de RingCentral", "base de datos
   X"), crea una dependencia (entidad bcp_dependency) enlazada al proceso por
   "_ref_process_id", con su nombre y su dependency_type. Ahi es donde vive el
-  proveedor de infraestructura, no en un escenario aparte."""
+  proveedor de infraestructura, no en un escenario aparte.
+
+JERARQUIA DE PROCESOS (reconstruye la estructura real, no una lista plana):
+- UNIDAD DE NEGOCIO: cada proceso pertenece a un area/departamento (Comercial,
+  IT, Operaciones, Finanzas...). Cuando el documento lo indique (por columna,
+  cabecera, pestana o titulo de bloque), rellena "business_unit" en cada proceso.
+- MACRO-PROCESO -> PROCESO -> ACTIVIDAD: si un proceso es una parte o subproceso
+  de otro mayor (una actividad dentro de un proceso, un proceso dentro de una
+  cadena de valor), enlazalo a su padre con "_ref_parent_process_id" usando el
+  NOMBRE EXACTO del proceso padre. No inventes niveles que el documento no marca;
+  pero si el documento numera "1. Ventas / 1.1 Captacion / 1.2 Facturacion",
+  1.1 y 1.2 son hijos de 1. Ventas.
+- PROCESO QUE DEPENDE DE OTRO PROCESO: cuando un proceso necesita de otro proceso
+  para operar o recuperarse (p.ej. "Facturacion depende de que Ventas este
+  operativo"), crea una bcp_dependency con dependency_type "process", enlazada al
+  proceso dependiente por "_ref_process_id" y al proceso del que depende por
+  "_ref_depends_on_process_id" (nombre exacto). Eso alimenta el grafo de
+  propagacion de impacto y el orden de recuperacion."""
 
 
 def _cache_get(db, org_id, sha256):

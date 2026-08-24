@@ -35,6 +35,66 @@ const ViewSuppliers = (() => {
     return `<span style="display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:600;background:${color};color:#fff;">${UI.esc(label)}</span>`;
   }
 
+  // ── Suppliers Module Review: clasificaciones del cliente (puntos 2/5/6/18) ──
+  // Etiquetas en es-ES inline (consistente con el resto de la vista; i18n en punto 16).
+  const BIZ_IMPORTANCE = {
+    not_relevant: { label: 'No relevante', color: '#94a3b8' },
+    normal:       { label: 'Normal',       color: '#3b82f6' },
+    important:    { label: 'Importante',   color: '#f59e0b' },
+    critical:     { label: 'Crítico',      color: '#dc2626' },
+  };
+  const SEC_RISK = {
+    very_low: { label: 'Muy bajo', color: '#16a34a' },
+    low:      { label: 'Bajo',     color: '#65a30d' },
+    medium:   { label: 'Medio',    color: '#f59e0b' },
+    high:     { label: 'Alto',     color: '#ea580c' },
+    critical: { label: 'Crítico',  color: '#dc2626' },
+  };
+  const REVIEW_FREQ = {
+    monthly: 'Mensual', quarterly: 'Trimestral', semiannual: 'Semestral',
+    annual: 'Anual', biennial: 'Bienal', none: 'Sin revisión',
+  };
+  const REVIEW_STATUS = {
+    active:         { label: 'Activo',            color: '#16a34a' },
+    review_due_90:  { label: 'Revisión en 90 días', color: '#3b82f6' },
+    review_due_60:  { label: 'Revisión en 60 días', color: '#f59e0b' },
+    review_due_30:  { label: 'Revisión en 30 días', color: '#ea580c' },
+    under_review:   { label: 'En revisión',       color: '#8b5cf6' },
+    review_overdue: { label: 'Revisión vencida',  color: '#dc2626' },
+  };
+  const SEC_STATUS = {
+    draft:                             { label: 'Borrador',                    color: '#94a3b8' },
+    pending_supplier_response:         { label: 'Pendiente respuesta proveedor', color: '#3b82f6' },
+    pending_security_review:           { label: 'Pendiente revisión seguridad',  color: '#8b5cf6' },
+    pending_additional_info:           { label: 'Pendiente info adicional',      color: '#f59e0b' },
+    security_approved:                 { label: 'Aprobado por seguridad',        color: '#16a34a' },
+    security_approved_with_mitigation: { label: 'Aprobado con mitigación',       color: '#65a30d' },
+    risk_accepted:                     { label: 'Riesgo aceptado',               color: '#0891b2' },
+    rejected:                          { label: 'Rechazado',                     color: '#dc2626' },
+    offboarded:                        { label: 'Dado de baja',                  color: '#64748b' },
+  };
+  const AGREEMENT_STATUS = {
+    none: 'Sin acuerdo', draft: 'Borrador', pending_signature: 'Pendiente firma',
+    signed: 'Firmado', expired: 'Expirado',
+  };
+  const NEXT_ACTION = {
+    internal: { label: 'Nosotros', color: '#8b5cf6' },
+    supplier: { label: 'Proveedor', color: '#3b82f6' },
+    security: { label: 'Seguridad', color: '#ea580c' },
+    none:     { label: '—', color: '#94a3b8' },
+  };
+
+  function _enumBadge(map, code) {
+    const e = map[code];
+    if (!e) return '<span style="color:var(--text-muted);">-</span>';
+    return _badge(e.label, e.color);
+  }
+  function _selOptions(map, selected) {
+    return `<option value="">- Sin definir -</option>` + Object.entries(map).map(([k, val]) =>
+      `<option value="${k}" ${selected === k ? 'selected' : ''}>${UI.esc(val.label || val)}</option>`
+    ).join('');
+  }
+
   // ── Dashboard editable ────────────────────────────────────────────────────
   function _SUP_WIDGETS() {
     return [
@@ -139,11 +199,14 @@ const ViewSuppliers = (() => {
     const actions = document.getElementById('sup-header-actions');
     if (actions) {
       if (tab === 'suppliers') {
-        actions.innerHTML = (Auth.canEdit() ? `<button class="btn" id="btn-import-sup">${window.t('suppliers.import_btn')}</button> ` : '')
+        actions.innerHTML = (Auth.canEdit() ? `<button class="btn" id="btn-tprm-settings" title="Configuración del módulo">⚙ Configuración</button> ` : '')
+          + (Auth.canEdit() ? `<button class="btn" id="btn-import-sup">${window.t('suppliers.import_btn')}</button> ` : '')
           + `<button class="btn btn-primary" id="btn-new-sup">${window.t('suppliers.new_btn')}</button>`;
         document.getElementById('btn-new-sup').onclick = () => _openForm(null);
         const impBtn = document.getElementById('btn-import-sup');
         if (impBtn) impBtn.onclick = () => _openImport();
+        const cfgBtn = document.getElementById('btn-tprm-settings');
+        if (cfgBtn) cfgBtn.onclick = () => _openTprmSettings();
       } else if (tab === 'questionnaires') {
         actions.innerHTML = Auth.canEdit() ? `<button class="btn btn-primary" id="btn-new-seq">${window.t('suppliers.new_questionnaire_btn')}</button>` : '';
         if (Auth.canEdit()) document.getElementById('btn-new-seq').onclick = () => _openSeqForm(null);
@@ -201,6 +264,21 @@ const ViewSuppliers = (() => {
               <option value="terminated">${window.t('suppliers.lifecycle_terminated')}</option>
             </select>
           </div>
+          <div><label style="font-size:12px;">Importancia de negocio</label>
+            <select id="f-adv-biz-imp" class="input"><option value="">Cualquiera</option>${Object.entries(BIZ_IMPORTANCE).map(([k, v]) => `<option value="${k}">${v.label}</option>`).join('')}</select>
+          </div>
+          <div><label style="font-size:12px;">Riesgo de seguridad</label>
+            <select id="f-adv-sec-risk" class="input"><option value="">Cualquiera</option>${Object.entries(SEC_RISK).map(([k, v]) => `<option value="${k}">${v.label}</option>`).join('')}</select>
+          </div>
+          <div><label style="font-size:12px;">Estado de seguridad</label>
+            <select id="f-adv-sec-status" class="input"><option value="">Cualquiera</option>${Object.entries(SEC_STATUS).map(([k, v]) => `<option value="${k}">${v.label}</option>`).join('')}</select>
+          </div>
+          <div><label style="font-size:12px;">Estado de revisión</label>
+            <select id="f-adv-review-status" class="input"><option value="">Cualquiera</option>${Object.entries(REVIEW_STATUS).map(([k, v]) => `<option value="${k}">${v.label}</option>`).join('')}</select>
+          </div>
+          <div><label style="font-size:12px;">Región operativa</label>
+            <select id="f-adv-region" class="input"><option value="">Cualquiera</option></select>
+          </div>
         </div>
         <div style="margin-top:8px;display:flex;gap:8px;">
           <button id="btn-adv-apply" class="btn btn-sm btn-primary">${window.t('suppliers.filter_apply')}</button>
@@ -223,12 +301,22 @@ const ViewSuppliers = (() => {
     };
     document.getElementById('btn-adv-apply').onclick = _refresh;
     document.getElementById('btn-adv-clear').onclick = () => {
-      ['f-adv-location','f-adv-dept','f-adv-imp','f-adv-rel'].forEach(id => {
+      ['f-adv-location','f-adv-dept','f-adv-imp','f-adv-rel','f-adv-biz-imp',
+       'f-adv-sec-risk','f-adv-sec-status','f-adv-review-status','f-adv-region'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.value = '';
       });
       _refresh();
     };
+    // Poblar el select de region con la config del modulo (punto 4)
+    Api.tprm.getSettings().then(cfg => {
+      const sel = document.getElementById('f-adv-region');
+      if (sel && cfg.operating_regions) {
+        cfg.operating_regions.forEach(r => {
+          const o = document.createElement('option'); o.value = r; o.textContent = r; sel.appendChild(o);
+        });
+      }
+    }).catch(() => {});
     await _refresh();
   }
 
@@ -270,6 +358,11 @@ const ViewSuppliers = (() => {
     const advDept = document.getElementById('f-adv-dept')?.value.trim().toLowerCase() || '';
     const advImp = document.getElementById('f-adv-imp')?.value || '';
     const advRel = document.getElementById('f-adv-rel')?.value || '';
+    const advBizImp = document.getElementById('f-adv-biz-imp')?.value || '';
+    const advSecRisk = document.getElementById('f-adv-sec-risk')?.value || '';
+    const advSecStatus = document.getElementById('f-adv-sec-status')?.value || '';
+    const advReviewStatus = document.getElementById('f-adv-review-status')?.value || '';
+    const advRegion = document.getElementById('f-adv-region')?.value || '';
     const wrap = document.getElementById('sup-table-wrap');
     if (!wrap) return;
     wrap.innerHTML = '<p class="text-muted">Cargando...</p>';
@@ -277,6 +370,11 @@ const ViewSuppliers = (() => {
       const params = {};
       if (riskLevel) params.risk_level = riskLevel;
       if (q) params.q = q;
+      if (advBizImp) params.business_importance_level = advBizImp;
+      if (advSecRisk) params.security_risk_level = advSecRisk;
+      if (advSecStatus) params.security_status = advSecStatus;
+      if (advReviewStatus) params.review_status = advReviewStatus;
+      if (advRegion) params.operating_region = advRegion;
       let data = await Api.suppliers.list(params);
       if (criticalFilter === '1') data = data.filter(s => s.is_critical);
       else if (criticalFilter === '0') data = data.filter(s => !s.is_critical);
@@ -339,6 +437,13 @@ const ViewSuppliers = (() => {
       const critBadge = s.is_critical
         ? `<span style="display:inline-block;padding:2px 7px;border-radius:999px;font-size:10px;font-weight:700;background:#DC2626;color:#fff;">CRÍTICO</span>`
         : `<span style="display:inline-block;padding:2px 7px;border-radius:999px;font-size:10px;font-weight:600;background:var(--bg-2);color:var(--text-muted);border:1px solid var(--border);">Normal</span>`;
+      const bizImp = s.business_importance_level ? _enumBadge(BIZ_IMPORTANCE, s.business_importance_level) : '<span style="color:var(--text-muted);">-</span>';
+      const secRisk = s.security_risk_level ? _enumBadge(SEC_RISK, s.security_risk_level) : '<span style="color:var(--text-muted);">-</span>';
+      const secStatus = s.security_status ? _enumBadge(SEC_STATUS, s.security_status) : '<span style="color:var(--text-muted);">-</span>';
+      const nextAction = (s.next_action_owner && s.next_action_owner !== 'none' && NEXT_ACTION[s.next_action_owner])
+        ? `<div style="font-size:9px;color:var(--text-muted);margin-top:2px;">→ ${NEXT_ACTION[s.next_action_owner].label}</div>` : '';
+      const revBadge = (s.review_status && s.review_status !== 'active' && REVIEW_STATUS[s.review_status])
+        ? `<div style="margin-top:3px;">${_badge(REVIEW_STATUS[s.review_status].label, REVIEW_STATUS[s.review_status].color)}</div>` : '';
       return `
         <tr>
           <td style="width:36px;text-align:center;">
@@ -348,14 +453,19 @@ const ViewSuppliers = (() => {
           <td><b>${UI.esc(s.code)}</b></td>
           <td><span data-id="${s.id}" data-action="file" style="cursor:pointer;color:var(--brand-purple);font-weight:600;">${UI.esc(s.name)}</span></td>
           <td>${critBadge}</td>
+          <td>${bizImp}</td>
+          <td>${secRisk}</td>
+          <td>${secStatus}${nextAction}</td>
           <td>${tier}</td>
           <td style="text-align:center;font-weight:700;">${inh}</td>
           <td style="text-align:center;font-weight:700;">${res}</td>
           <td>${assessed}</td>
-          <td>${next}</td>
+          <td>${next}${revBadge}</td>
           <td>
             ${canEdit ? `<button class="btn btn-sm" data-id="${s.id}" data-action="recompute" title="Recalcular tier y riesgo">Recalcular</button>` : ''}
             <button class="btn btn-sm" data-id="${s.id}" data-action="edit">Editar</button>
+            ${canEdit ? `<button class="btn btn-sm" data-id="${s.id}" data-action="ai" title="Asistente IA (clasificar, analizar, revisar)">IA</button>` : ''}
+            <button class="btn btn-sm" data-id="${s.id}" data-name="${UI.esc(s.name)}" data-action="timeline" title="Timeline de eventos del proveedor">Timeline</button>
             <button class="btn btn-sm" data-id="${s.id}" data-name="${UI.esc(s.name)}" data-action="history" title="Historial de cambios">Historial</button>
             ${canEdit ? `<button class="btn btn-sm btn-danger" data-id="${s.id}" data-action="del">${t('common.delete')}</button>` : ''}
           </td>
@@ -382,8 +492,8 @@ const ViewSuppliers = (() => {
                 style="width:15px;height:15px;cursor:pointer;accent-color:var(--brand-purple);"
                 title="Seleccionar todo">
             </th>
-            <th>Código</th><th>Nombre</th><th>Tag</th><th>Tier</th><th>Inherent</th><th>Residual</th>
-            <th>Ult. evaluación</th><th>Prox. evaluación</th><th>Acciones</th>
+            <th>Código</th><th>Nombre</th><th>Tag</th><th>Imp. negocio</th><th>Riesgo seg.</th><th>Estado seg.</th><th>Tier</th><th>Inherent</th><th>Residual</th>
+            <th>Ult. evaluación</th><th>Prox. revisión</th><th>Acciones</th>
           </tr>
         </thead>
         <tbody>${rows}</tbody>
@@ -463,6 +573,152 @@ const ViewSuppliers = (() => {
         }
       };
     });
+    wrap.querySelectorAll('[data-action="ai"]').forEach(btn => {
+      btn.onclick = () => {
+        const sup = data.find(s => s.id == btn.dataset.id);
+        if (sup) _openAiAssistant(sup);
+      };
+    });
+    wrap.querySelectorAll('[data-action="timeline"]').forEach(btn => {
+      btn.onclick = () => _openTimeline(btn.dataset.id, btn.dataset.name);
+    });
+  }
+
+  const EVENT_TYPE_LABELS = {
+    security_incident: 'Incidente de seguridad', sla_breach: 'Brecha de SLA',
+    ownership_change: 'Cambio de propiedad', contract_change: 'Cambio de contrato',
+    review_completed: 'Revisión completada', risk_reclassified: 'Riesgo reclasificado',
+    status_change: 'Cambio de estado', assessment_completed: 'Evaluación completada',
+    note: 'Nota', other: 'Otro',
+  };
+
+  async function _openTimeline(id, name) {
+    UI.modal(`Timeline — ${UI.esc(name || '')}`, `
+      <div class="span2">
+        <div style="display:flex;gap:8px;margin-bottom:12px;align-items:flex-end;flex-wrap:wrap;">
+          <div style="flex:1;min-width:180px;"><label style="font-size:12px;">Nueva entrada</label>
+            <input id="tl-title" class="input" placeholder="Título del evento"></div>
+          <select id="tl-type" class="input" style="width:180px;">
+            ${Object.entries(EVENT_TYPE_LABELS).map(([k, l]) => `<option value="${k}">${l}</option>`).join('')}
+          </select>
+          <button class="btn btn-sm btn-primary" id="tl-add">Añadir</button>
+        </div>
+        <div id="tl-list"><p class="text-muted" style="font-size:13px;">Cargando…</p></div>
+      </div>
+    `, { actions: `<button class="btn" onclick="UI.closeModal()">Cerrar</button>`, width: 'min(96vw, 680px)' });
+    const listEl = document.getElementById('tl-list');
+    const load = async () => {
+      try {
+        const evs = await Api.suppliers.events(id);
+        if (!evs.length) { listEl.innerHTML = '<p class="text-muted" style="font-size:13px;">Sin eventos todavía.</p>'; return; }
+        listEl.innerHTML = evs.map(e => `
+          <div style="display:flex;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);">
+            <div style="width:8px;height:8px;border-radius:50%;background:var(--brand-purple);margin-top:6px;flex-shrink:0;"></div>
+            <div style="flex:1;">
+              <div style="font-size:13px;font-weight:600;">${UI.esc(e.title)}
+                <span style="font-size:10px;font-weight:600;color:var(--text-muted);background:var(--bg-2);border:1px solid var(--border);border-radius:999px;padding:1px 6px;margin-left:6px;">${EVENT_TYPE_LABELS[e.event_type] || e.event_type}</span>
+                ${e.source === 'auto' ? '<span style="font-size:10px;color:var(--text-muted);">· auto</span>' : ''}
+              </div>
+              ${e.description ? `<div style="font-size:12px;color:var(--text-muted);margin-top:2px;">${UI.esc(e.description)}</div>` : ''}
+              <div style="font-size:11px;color:var(--text-subtle);margin-top:2px;">${new Date(e.occurred_at).toLocaleString('es-ES')}</div>
+            </div>
+          </div>`).join('');
+      } catch (e) { listEl.innerHTML = `<div class="notice">${UI.esc(e.message)}</div>`; }
+    };
+    document.getElementById('tl-add').onclick = async () => {
+      const title = document.getElementById('tl-title').value.trim();
+      if (!title) { UI.toast('Título obligatorio', 'error'); return; }
+      try {
+        await Api.suppliers.addEvent(id, { title, event_type: document.getElementById('tl-type').value });
+        document.getElementById('tl-title').value = '';
+        await load();
+      } catch (e) { UI.toast(e.message, 'error'); }
+    };
+    await load();
+  }
+
+  function _aiListHtml(title, items) {
+    if (!items || !items.length) return '';
+    return `<div style="margin-top:8px;"><strong style="font-size:12px;color:var(--brand-purple);">${title}</strong>
+      <ul style="margin:4px 0 0 16px;font-size:13px;">${items.map(i => `<li>${UI.esc(typeof i === 'string' ? i : JSON.stringify(i))}</li>`).join('')}</ul></div>`;
+  }
+
+  function _openAiAssistant(s) {
+    UI.modal(`Asistente IA — ${UI.esc(s.name)}`, `
+      <div class="span2">
+        <p style="font-size:12px;color:var(--text-muted);margin-bottom:10px;">La IA propone; Seguridad mantiene la decisión final. Nada se aplica automáticamente.</p>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">
+          <button class="btn btn-sm btn-primary" id="ai-classify">Sugerir clasificación</button>
+          <button class="btn btn-sm" id="ai-analyze">Analizar proveedor</button>
+          <button class="btn btn-sm" id="ai-review">Resumen de revisión</button>
+        </div>
+        <div id="ai-out" style="min-height:60px;"></div>
+      </div>
+    `, { actions: `<button class="btn" onclick="UI.closeModal()">Cerrar</button>`, width: 'min(96vw, 720px)' });
+
+    const out = document.getElementById('ai-out');
+    const busy = () => { out.innerHTML = '<p class="text-muted" style="font-size:13px;">Consultando IA…</p>'; };
+
+    document.getElementById('ai-classify').onclick = async () => {
+      busy();
+      try {
+        const r = await Api.suppliers.aiClassify(s.id);
+        out.innerHTML = `
+          <div style="background:var(--bg-2);border:1px solid var(--border);border-radius:6px;padding:10px;">
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:13px;">
+              <div><b>Importancia negocio:</b> ${_enumBadge(BIZ_IMPORTANCE, r.business_importance_level)}</div>
+              <div><b>Riesgo seguridad:</b> ${_enumBadge(SEC_RISK, r.security_risk_level)}</div>
+              <div><b>Frecuencia revisión:</b> ${UI.esc(REVIEW_FREQ[r.review_frequency] || r.review_frequency || '—')}</div>
+              <div><b>Confianza:</b> ${Math.round((r.confidence || 0) * 100)}%</div>
+            </div>
+            ${_aiListHtml('Evaluaciones sugeridas', r.required_assessments)}
+            <div style="margin-top:8px;font-size:13px;"><b>Justificación:</b> ${UI.esc(r.rationale || '')}</div>
+            <button class="btn btn-sm btn-primary" id="ai-apply" style="margin-top:10px;">Aplicar sugerencia (aprobar)</button>
+          </div>`;
+        document.getElementById('ai-apply').onclick = async () => {
+          try {
+            await Api.suppliers.update(s.id, {
+              business_importance_level: r.business_importance_level,
+              security_risk_level: r.security_risk_level,
+              review_frequency: r.review_frequency,
+            });
+            UI.toast('Clasificación aplicada', 'success');
+            UI.closeModal();
+            await _refresh();
+          } catch (e) { UI.toast(e.message, 'error'); }
+        };
+      } catch (e) { out.innerHTML = `<div class="notice">${UI.esc(e.message)}</div>`; }
+    };
+
+    document.getElementById('ai-analyze').onclick = async () => {
+      busy();
+      try {
+        const r = await Api.suppliers.aiAnalyze(s.id);
+        out.innerHTML = `
+          <div style="background:var(--bg-2);border:1px solid var(--border);border-radius:6px;padding:10px;font-size:13px;">
+            <div><b>Resumen:</b> ${UI.esc(r.summary || '')}</div>
+            ${_aiListHtml('Datos faltantes', r.missing_data)}
+            ${_aiListHtml('Acuerdos faltantes', r.missing_agreements)}
+            ${_aiListHtml('Evaluaciones faltantes', r.missing_assessments)}
+            ${_aiListHtml('Revisiones', r.overdue_reviews)}
+            ${_aiListHtml('Acciones recomendadas', r.recommended_actions)}
+          </div>`;
+      } catch (e) { out.innerHTML = `<div class="notice">${UI.esc(e.message)}</div>`; }
+    };
+
+    document.getElementById('ai-review').onclick = async () => {
+      busy();
+      try {
+        const r = await Api.suppliers.aiReviewAssistant(s.id);
+        out.innerHTML = `
+          <div style="background:var(--bg-2);border:1px solid var(--border);border-radius:6px;padding:10px;font-size:13px;">
+            <div><b>Resumen de revisión:</b> ${UI.esc(r.review_summary || '')}</div>
+            <div style="margin-top:6px;"><b>Postura:</b> ${UI.esc(r.overall_posture || '—')}</div>
+            ${_aiListHtml('Acciones sugeridas', r.suggested_actions)}
+            ${_aiListHtml('Recomendaciones de reevaluación', r.reassessment_recommendations)}
+          </div>`;
+      } catch (e) { out.innerHTML = `<div class="notice">${UI.esc(e.message)}</div>`; }
+    };
   }
 
   function _formHtml(s) {
@@ -514,6 +770,33 @@ const ViewSuppliers = (() => {
             <input type="number" min="1" max="5" id="f-biz-imp" class="input" value="${v.business_importance || ''}" style="width:70px;">
           </div>
         </div>
+
+        <!-- Gobierno y seguridad (Suppliers Module Review) -->
+        <div style="grid-column:1/-1;margin-top:4px;border-top:1px solid var(--border);padding-top:8px;">
+          <strong style="font-size:13px;color:var(--brand-purple);">Gobierno y seguridad</strong>
+          <span style="font-size:11px;color:var(--text-muted);margin-left:8px;">Importancia de negocio y riesgo de seguridad son clasificaciones independientes.</span>
+        </div>
+        <div><label>Importancia de negocio</label>
+          <select id="f-biz-imp-level" class="input">${_selOptions(BIZ_IMPORTANCE, v.business_importance_level)}</select>
+        </div>
+        <div><label>Riesgo de seguridad</label>
+          <select id="f-sec-risk" class="input">${_selOptions(SEC_RISK, v.security_risk_level)}</select>
+        </div>
+        <div><label>Región operativa</label>
+          <select id="f-op-region" class="input"><option value="">- Sin definir -</option>${v.operating_region ? `<option value="${UI.esc(v.operating_region)}" selected>${UI.esc(v.operating_region)}</option>` : ''}</select>
+        </div>
+        <div><label>Estado de seguridad</label>
+          <select id="f-sec-status" class="input">${_selOptions(SEC_STATUS, v.security_status)}</select>
+        </div>
+        <div><label>Frecuencia de revisión</label>
+          <select id="f-review-freq" class="input"><option value="">- Sin definir -</option>${Object.entries(REVIEW_FREQ).map(([k, l]) => `<option value="${k}" ${v.review_frequency === k ? 'selected' : ''}>${l}</option>`).join('')}</select>
+        </div>
+        <div><label>Estado del acuerdo</label>
+          <select id="f-agreement" class="input"><option value="">- Sin definir -</option>${Object.entries(AGREEMENT_STATUS).map(([k, l]) => `<option value="${k}" ${v.agreement_status === k ? 'selected' : ''}>${l}</option>`).join('')}</select>
+        </div>
+        <div><label>Owner (responsable)</label><select id="f-owner" class="input"><option value="">- Sin asignar -</option></select></div>
+        <div><label>Backup Owner (suplente)</label><select id="f-backup-owner" class="input"><option value="">- Sin asignar -</option></select></div>
+        <div></div>
 
         <!-- Notas -->
         <div style="grid-column:1/-1;"><label>Notas / descripción</label><textarea id="f-notes" class="input" rows="2">${UI.esc(v.notes || '')}</textarea></div>
@@ -608,15 +891,32 @@ const ViewSuppliers = (() => {
     document.getElementById('sup-add-sla').onclick = _addSlaRow;
     _renderContactList();
     document.getElementById('sup-add-contact').onclick = _addContactRow;
-    // Poblar select de responsable interno
+    // Poblar selects de responsables (interno, owner, backup owner)
     Api.users.list().then(users => {
-      const sel = document.getElementById('f-internal-owner');
-      if (!sel) return;
-      users.forEach(u => {
+      const fill = (elId, selectedId) => {
+        const sel = document.getElementById(elId);
+        if (!sel) return;
+        users.forEach(u => {
+          const opt = document.createElement('option');
+          opt.value = u.id;
+          opt.textContent = u.full_name || u.email;
+          if (s && u.id === selectedId) opt.selected = true;
+          sel.appendChild(opt);
+        });
+      };
+      fill('f-internal-owner', s?.internal_owner_id);
+      fill('f-owner', s?.owner_id);
+      fill('f-backup-owner', s?.backup_owner_id);
+    }).catch(() => {});
+    // Poblar regiones operativas configurables (punto 4)
+    Api.tprm.getSettings().then(cfg => {
+      const sel = document.getElementById('f-op-region');
+      if (!sel || !cfg.operating_regions) return;
+      const cur = s?.operating_region || '';
+      cfg.operating_regions.forEach(r => {
+        if (r === cur) return; // ya insertado como selected
         const opt = document.createElement('option');
-        opt.value = u.id;
-        opt.textContent = u.full_name || u.email;
-        if (s && u.id === s.internal_owner_id) opt.selected = true;
+        opt.value = r; opt.textContent = r;
         sel.appendChild(opt);
       });
     }).catch(() => {});
@@ -2052,6 +2352,15 @@ const ViewSuppliers = (() => {
         description: sl.description?.trim() || null,
       })),
       trust_portal_url: document.getElementById('f-trust-portal-url')?.value.trim() || null,
+      // Suppliers Module Review (puntos 2/3/4/5/6/13)
+      business_importance_level: document.getElementById('f-biz-imp-level')?.value || null,
+      security_risk_level: document.getElementById('f-sec-risk')?.value || null,
+      operating_region: document.getElementById('f-op-region')?.value || null,
+      security_status: document.getElementById('f-sec-status')?.value || null,
+      review_frequency: document.getElementById('f-review-freq')?.value || null,
+      agreement_status: document.getElementById('f-agreement')?.value || null,
+      owner_id: document.getElementById('f-owner')?.value ? parseInt(document.getElementById('f-owner').value) : null,
+      backup_owner_id: document.getElementById('f-backup-owner')?.value ? parseInt(document.getElementById('f-backup-owner').value) : null,
     };
     try {
       if (s) {
@@ -2065,6 +2374,81 @@ const ViewSuppliers = (() => {
       await _loadStats();
       await _refresh();
     } catch (e) { UI.toast(e.message, 'error'); }
+  }
+
+  async function _openTprmSettings() {
+    let cfg = {}; let templates = [];
+    try {
+      [cfg, templates] = await Promise.all([Api.tprm.getSettings(), Api.tprm.templates().catch(() => [])]);
+    } catch (e) { UI.toast(e.message, 'error'); return; }
+    const tplOptions = (sel) => `<option value="">- Ninguna -</option>` +
+      templates.map(tp => `<option value="${tp.code}" ${sel === tp.code ? 'selected' : ''}>${UI.esc(tp.name)}</option>`).join('');
+    const modKeys = [
+      ['personal_data', 'Datos personales'], ['regulatory', 'Regulatorio'],
+      ['offboarding', 'Offboarding'], ['ai_usage', 'Uso de IA'],
+    ];
+    const trig = cfg.trigger_modules || {};
+    const recips = JSON.stringify(cfg.review_notify_recipients || {}, null, 2);
+    UI.modal('Configuración del módulo de proveedores', `
+      <div class="span2" style="display:grid;gap:14px;">
+        <div>
+          <label><b>Regiones operativas</b> <span style="font-size:11px;color:var(--text-muted);">(una por línea; editable e independiente de las sedes)</span></label>
+          <textarea id="cfg-regions" class="input" rows="5">${UI.esc((cfg.operating_regions || []).join('\n'))}</textarea>
+          ${(cfg.region_suggestions || []).length ? `<p style="font-size:11px;color:var(--text-muted);margin-top:4px;">Sugerencias desde sedes BCM: ${cfg.region_suggestions.map(r => UI.esc(r)).join(', ')}</p>` : ''}
+        </div>
+        <div>
+          <label><b>Plantilla de cuestionario estándar</b> <span style="font-size:11px;color:var(--text-muted);">(punto 7 — se usa por defecto al crear cuestionarios)</span></label>
+          <select id="cfg-default-tpl" class="input">${tplOptions(cfg.default_template_code)}</select>
+        </div>
+        <div>
+          <label><b>Módulos add-on (se disparan según perfil del proveedor)</b></label>
+          <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-top:4px;">
+            ${modKeys.map(([k, lbl]) => `<div><label style="font-size:12px;">${lbl}</label><select class="input cfg-mod" data-key="${k}">${tplOptions(trig[k])}</select></div>`).join('')}
+          </div>
+        </div>
+        <div style="border-top:1px solid var(--border);padding-top:10px;">
+          <label style="display:flex;align-items:center;gap:8px;"><input type="checkbox" id="cfg-notify" ${cfg.review_notify_enabled ? 'checked' : ''}> <b>Notificar decisión de seguridad a destinatarios configurados (punto 11)</b></label>
+          <p style="font-size:11px;color:var(--text-muted);margin:4px 0;">Destinatarios por región (JSON). Ej: <code>{"__default__":{"finance":["fin@x.com"],"legal":["legal@x.com"]},"Spain":{"finance":["fin.es@x.com"]}}</code></p>
+          <textarea id="cfg-recipients" class="input" rows="5" style="font-family:monospace;font-size:12px;">${UI.esc(recips)}</textarea>
+        </div>
+        <div style="border-top:1px solid var(--border);padding-top:10px;">
+          <label><b>Email estándar del cuestionario (punto 7)</b></label>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:4px;">
+            <div><label style="font-size:12px;">Asunto (EN)</label><input id="cfg-subj-en" class="input" value="${UI.esc(cfg.standard_email_subject_en || '')}"></div>
+            <div><label style="font-size:12px;">Asunto (ES)</label><input id="cfg-subj-es" class="input" value="${UI.esc(cfg.standard_email_subject_es || '')}"></div>
+            <div><label style="font-size:12px;">Cuerpo (EN)</label><textarea id="cfg-body-en" class="input" rows="3">${UI.esc(cfg.standard_email_body_en || '')}</textarea></div>
+            <div><label style="font-size:12px;">Cuerpo (ES)</label><textarea id="cfg-body-es" class="input" rows="3">${UI.esc(cfg.standard_email_body_es || '')}</textarea></div>
+          </div>
+        </div>
+      </div>
+    `, {
+      actions: `<button class="btn" id="cfg-cancel">Cancelar</button><button class="btn btn-primary" id="cfg-save">Guardar</button>`,
+      width: 'min(96vw, 820px)',
+    });
+    document.getElementById('cfg-cancel').onclick = UI.closeModal;
+    document.getElementById('cfg-save').onclick = async () => {
+      const mods = {};
+      document.querySelectorAll('.cfg-mod').forEach(sel => { if (sel.value) mods[sel.dataset.key] = sel.value; });
+      let recipients = {};
+      try { recipients = JSON.parse(document.getElementById('cfg-recipients').value || '{}'); }
+      catch (e) { UI.toast('Destinatarios: JSON no válido', 'error'); return; }
+      const payload = {
+        operating_regions: document.getElementById('cfg-regions').value.split('\n').map(s => s.trim()).filter(Boolean),
+        default_template_code: document.getElementById('cfg-default-tpl').value || null,
+        trigger_modules: mods,
+        review_notify_enabled: document.getElementById('cfg-notify').checked,
+        review_notify_recipients: recipients,
+        standard_email_subject_en: document.getElementById('cfg-subj-en').value.trim() || null,
+        standard_email_subject_es: document.getElementById('cfg-subj-es').value.trim() || null,
+        standard_email_body_en: document.getElementById('cfg-body-en').value.trim() || null,
+        standard_email_body_es: document.getElementById('cfg-body-es').value.trim() || null,
+      };
+      try {
+        await Api.tprm.updateSettings(payload);
+        UI.toast('Configuración guardada', 'success');
+        UI.closeModal();
+      } catch (e) { UI.toast(e.message, 'error'); }
+    };
   }
 
   function _openImport() {
@@ -2569,6 +2953,14 @@ const ViewSuppliers = (() => {
       <div class="span2"><label>Notas internas</label>
         <textarea id="sq-notes" rows="2" placeholder="Notas para el equipo interno (no visibles para el proveedor)"></textarea>
       </div>
+      <div class="span2" style="display:flex;flex-direction:column;gap:6px;background:var(--bg-2);border:1px solid var(--border);border-radius:6px;padding:8px 10px;">
+        <label style="display:flex;align-items:center;gap:8px;margin:0;cursor:pointer;font-size:13px;">
+          <input type="checkbox" id="sq-prefill"> Reutilizar respuestas del último cuestionario respondido (el proveedor solo confirma o reporta cambios)
+        </label>
+        <label style="display:flex;align-items:center;gap:8px;margin:0;cursor:pointer;font-size:13px;">
+          <input type="checkbox" id="sq-modules" checked> Adjuntar módulos add-on automáticamente según el perfil del proveedor (datos personales, regulatorio, offboarding…)
+        </label>
+      </div>
       <div class="span2 notice">
         Elige una plantilla del sistema (ISO 27001, NIS2, DORA, GDPR, ISO 42001, offboarding...) o el set estandar. Tras crear el cuestionario, copia el enlace publico para enviarlo al proveedor.
       </div>
@@ -2593,6 +2985,8 @@ const ViewSuppliers = (() => {
         template_code: tplVal.startsWith('sys:') ? tplVal.slice(4) : null,
         custom_template_id: tplVal.startsWith('custom:') ? parseInt(tplVal.slice(7)) : null,
         notify_email: notifyEmail || null,
+        prefill_from_previous: document.getElementById('sq-prefill')?.checked || false,
+        apply_trigger_modules: document.getElementById('sq-modules')?.checked !== false,
       };
       try {
         const q = await Api.supplier_questionnaires.create(body);

@@ -242,10 +242,24 @@ const ViewVendorIssues = (() => {
       ${actHtml}
       ${evidHtml}
       ${issue.resolution_notes ? `<div style="margin-top:10px;font-size:13px;border-top:1px solid var(--border);padding-top:10px;"><strong>${t('common.notes')}:</strong><br>${UI.esc(issue.resolution_notes)}</div>` : ''}
+      ${issue.closure_approved_at ? `<div style="margin-top:10px;font-size:12px;color:var(--risk-low);"><strong>Cierre aprobado por Seguridad</strong> el ${new Date(issue.closure_approved_at).toLocaleString('es-ES')}</div>` : ''}
     `, {
       actions: `<button class="btn" onclick="UI.closeModal()">${t('common.close')}</button>
+                ${Auth.canEdit() && !['closed','mitigated','accepted'].includes(issue.status) ? `<button class="btn btn-success" onclick="ViewVendorIssues._approveClosure(${issue.id})" title="Cierre con aprobación de Seguridad">Aprobar cierre</button>` : ''}
                 ${Auth.canEdit() ? `<button class="btn btn-primary" onclick="UI.closeModal();ViewVendorIssues._openForm(${issue.id})">${t('common.edit')}</button>` : ''}`,
     });
+  }
+
+  async function _approveClosure(id) {
+    const notes = prompt('Notas de resolución (opcional):', '');
+    if (notes === null) return;  // cancelado
+    try {
+      await Api.vendor_issues.approveClosure(id, notes ? { resolution_notes: notes } : {});
+      UI.toast('Hallazgo cerrado con aprobación de Seguridad', 'success');
+      UI.closeModal();
+      await _refresh();
+      await _loadStats();
+    } catch (e) { UI.toast(e.message, 'error'); }
   }
 
   // --------------- FORMULARIO (crear / editar) ---------------
@@ -568,5 +582,5 @@ const ViewVendorIssues = (() => {
     } catch (e) { UI.toast(e.message, 'error'); }
   }
 
-  return { render, _openDetail, _openForm, _del };
+  return { render, _openDetail, _openForm, _del, _approveClosure };
 })();

@@ -1760,6 +1760,20 @@ const ViewGuide = {
         </tr>`).join('')}
       </tbody>
     </table>
+    ${this._h('Gobierno del proveedor: dos clasificaciones independientes')}
+    ${this._p('Cada proveedor tiene dos clasificaciones <strong>separadas y filtrables</strong>: la <strong>Importancia de negocio</strong> (No relevante / Normal / Importante / Crítico) y el <strong>Riesgo de seguridad</strong> (Muy bajo → Crítico). Seguridad puede actualizar cualquiera de las dos durante el ciclo de vida. Se completan también <strong>Owner</strong> y <strong>Backup Owner</strong> (continuidad de la responsabilidad), la <strong>Región operativa</strong> (configurable desde ⚙ Configuración, independiente del país) y el <strong>Estado de seguridad</strong> del flujo (Pendiente respuesta proveedor, Pendiente revisión, Aprobado por seguridad, Aprobado con mitigación, Riesgo aceptado, Rechazado…), que además indica quién tiene la siguiente acción.')}
+    ${this._h('Ciclo de revisión')}
+    ${this._p('Define la <strong>frecuencia de revisión</strong> y la plataforma calcula el <strong>estado de revisión</strong> (Activo, Revisión en 90/60/30 días, En revisión, Vencida) para que el proveedor siga operativo mientras se acerca la reevaluación. Los filtros avanzados permiten localizar proveedores por cualquiera de estos campos.')}
+    ${this._h('Timeline de eventos')}
+    ${this._p('El botón <strong>Timeline</strong> de cada proveedor muestra su historial cronológico (incidentes, brechas de SLA, cambios de propiedad/contrato, revisiones completadas y reclasificaciones de riesgo). Muchos eventos se generan automáticamente; también puedes añadir entradas manuales.')}
+    ${this._h('Hallazgos automáticos y cierre con aprobación')}
+    ${this._p('Al responder un cuestionario, las respuestas no conformes en preguntas críticas generan <strong>hallazgos automáticos</strong> con su severidad y SLA (p. ej. "MFA no implementado" → Alto). El cierre de un hallazgo requiere <strong>aprobación de Seguridad</strong> desde la propia ficha ("Aprobar cierre").')}
+    ${this._h('Notificaciones post-decisión')}
+    ${this._p('Cuando Seguridad toma una decisión (Aprobado / con mitigación / Riesgo aceptado / Rechazado), la plataforma puede notificar a destinatarios configurables por región (solicitante, Finanzas y Legal) con la importancia de negocio, el riesgo, la decisión, las mitigaciones y la próxima revisión. Se activa desde ⚙ Configuración.')}
+    ${this._h('Asistentes de IA (la IA propone, Seguridad aprueba)')}
+    ${this._p('El botón <strong>IA</strong> de cada proveedor ofrece tres asistentes: <em>Sugerir clasificación</em> (importancia, riesgo, frecuencia y evaluaciones requeridas), <em>Analizar proveedor</em> (datos, acuerdos y evaluaciones faltantes, revisiones vencidas y acciones) y <em>Resumen de revisión</em> (síntesis del historial con recomendaciones). Ninguna sugerencia se aplica sola: Seguridad mantiene la decisión final.')}
+    ${this._h('Configuración del módulo (⚙)')}
+    ${this._p('Desde <strong>⚙ Configuración</strong> se definen las regiones operativas, la plantilla y el email estándar del cuestionario (EN/ES), los módulos add-on que se disparan por perfil (datos personales, regulatorio, offboarding, IA) y los destinatarios de las notificaciones post-decisión.')}
     ${this._h('Proveedor crítico NIS2')}
     ${this._p('Marca el flag <em>"Proveedor crítico NIS2"</em> para los proveedores cuya interrupción o compromiso podría afectar a la continuidad de los servicios esenciales de tu organización. Estos proveedores tienen prioridad en las evaluaciones y deben incluirse en el plan de gestión de incidentes.')}
     ${this._h('Seguimiento de evaluaciones')}

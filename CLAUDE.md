@@ -157,7 +157,22 @@ con `psql -f` (golang-migrate esta desincronizado: `schema_migrations` va por la
 `OPERATIONS.md` (`vision.cyberxiasec.com`) esta MUERTO — apunta a un parking de
 DonDominio. El real es `visiox.app`. RiskHub (rama `feat/visiox-drp`) **aun no
 desplegado**: pendiente de merge y de `bash /opt/riskhub/deploy.sh`.
-Deploy previo (91.99.83.202) el 2026-08-03 — Fase 2 del rework del BCP: grafo de
+Deploy previo (91.99.83.202) el 2026-08-05 — Fases 3 y 4 del rework del BCP.
+Fase 4 (ingesta reconstruye jerarquia): el motor de ingesta ya no vuelca procesos
+planos. `business_process` gana `business_unit` y `parent_process_id` (referencia
+a otro proceso del lote por nombre); `bcp_dependency` gana `depends_on_process_id`
+(dependencia proceso->proceso). El materializador ordena topologicamente las
+entidades autorreferenciadas (`_sort_self_referential`), asi un subproceso listado
+antes que su padre encuentra al padre igual; con proteccion de ciclos. La pasada 2
+de comprension guia al modelo para deducir unidad de negocio, macro-proceso ->
+proceso -> actividad y dependencias proceso->proceso (EXTRACTION_PROMPT_VERSION 5,
+invalida la cache de extracciones previas). Tests test_ingest_hierarchy.py.
+Fase 3 (dossier): `bcp_hierarchy_service.build_process_dossier` +
+`GET /api/bcp/processes/{id}/dossier` reune RTO efectivo vs declarado, avisos de
+coherencia, jerarquia (padre/subprocesos navegables), dependencias por categoria,
+procesos que dependen de este, escenarios, estrategias, planes y pruebas. En el
+Mapa de continuidad los nombres de proceso abren su ficha. Tests
+test_bcp_process_dossier.py. Deploy previo 2026-08-03 — Fase 2 del rework del BCP: grafo de
 dependencias proceso->proceso. `bcp_hierarchy_service.build_impact_analysis` +
 `GET /api/bcp/impact-analysis`: propagacion de impacto transitiva (si cae X,
 afecta a N procesos), orden de recuperacion (Kahn), camino critico por RTO (DP

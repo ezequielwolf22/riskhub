@@ -695,6 +695,14 @@ class SupplierIn(BaseModel):
     department: Optional[str] = None
     business_importance: Optional[int] = Field(default=None, ge=1, le=5)
     internal_owner_id: Optional[int] = None
+    # v6.7.0 — Suppliers Module Review
+    business_importance_level: Optional[str] = None
+    security_risk_level: Optional[str] = None
+    backup_owner_id: Optional[int] = None
+    operating_region: Optional[str] = None
+    review_frequency: Optional[str] = None
+    security_status: Optional[str] = None
+    agreement_status: Optional[str] = None
 
 
 class SupplierUpdate(BaseModel):
@@ -744,6 +752,14 @@ class SupplierUpdate(BaseModel):
     business_importance: Optional[int] = Field(default=None, ge=1, le=5)
     internal_owner_id: Optional[int] = None
     trust_portal_url: Optional[str] = None
+    # v6.7.0 — Suppliers Module Review
+    business_importance_level: Optional[str] = None
+    security_risk_level: Optional[str] = None
+    backup_owner_id: Optional[int] = None
+    operating_region: Optional[str] = None
+    review_frequency: Optional[str] = None
+    security_status: Optional[str] = None
+    agreement_status: Optional[str] = None
 
 
 class SupplierOut(ORMBase):
@@ -807,6 +823,17 @@ class SupplierOut(ORMBase):
     email_subject: Optional[str] = None
     email_extraction_method: Optional[str] = None
     email_needs_review: Optional[bool] = None
+    # v6.7.0 — Suppliers Module Review
+    business_importance_level: Optional[str] = None
+    security_risk_level: Optional[str] = None
+    backup_owner_id: Optional[int] = None
+    operating_region: Optional[str] = None
+    review_frequency: Optional[str] = None
+    review_status: Optional[str] = None          # computado (property del modelo)
+    security_status: Optional[str] = None
+    security_status_changed_at: Optional[datetime] = None
+    agreement_status: Optional[str] = None
+    next_action_owner: Optional[str] = None      # computado (property del modelo)
 
     _coerce_scores = field_validator(
         "score", "inherent_risk_score", "control_effectiveness",
@@ -1510,6 +1537,9 @@ class SupplierQuestionnaireCreate(BaseModel):
     notify_email: Optional[str] = None        # v4.3.0: email de notificacion cuando el proveedor responde
     assigned_user_id: Optional[int] = None    # v4.4.0: asignacion interna
     assignment_type: Optional[str] = "external"  # external | internal
+    # v6.7.0 — Suppliers Module Review
+    prefill_from_previous: Optional[bool] = False   # punto 8: reutilizar respuestas del ultimo cuestionario
+    apply_trigger_modules: Optional[bool] = True    # punto 7: adjuntar modulos add-on segun perfil
 
 
 # ---------- TPRM: PLANTILLAS EDITABLES ----------
@@ -1693,6 +1723,8 @@ class VendorIssueOut(ORMBase):
     action_items: Optional[list[dict]] = None
     evidence_refs: Optional[list[dict]] = None
     resolution_notes: Optional[str] = None
+    closure_approved_by_id: Optional[int] = None
+    closure_approved_at: Optional[datetime] = None
     created_at: datetime
     updated_at: datetime
 

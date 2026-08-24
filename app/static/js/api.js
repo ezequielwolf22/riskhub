@@ -276,6 +276,12 @@ const Api = {
     downloadDocumentUrl: (supplierId, docId) => `/api/suppliers/${supplierId}/documents/${docId}/download`,
     deleteDocument: (supplierId, docId) => Api.del(`/api/suppliers/${supplierId}/documents/${docId}`),
     analyzeDocument: (supplierId, docId) => Api.post(`/api/suppliers/${supplierId}/documents/${docId}/analyze`, {}),
+    events: (id) => Api.get(`/api/suppliers/${id}/events`),
+    addEvent: (id, d) => Api.post(`/api/suppliers/${id}/events`, d),
+    gaps: (id) => Api.get(`/api/suppliers/${id}/gaps`),
+    aiClassify: (id) => Api.post(`/api/suppliers/${id}/ai-classify`, {}),
+    aiAnalyze: (id) => Api.post(`/api/suppliers/${id}/ai-analyze`, {}),
+    aiReviewAssistant: (id) => Api.post(`/api/suppliers/${id}/ai-review-assistant`, {}),
   },
   nonconformities: {
     list: (q) => Api.get('/api/nonconformities/', q),
@@ -485,6 +491,8 @@ const Api = {
     createCustomTemplate: (d) => Api.post('/api/tprm/custom-templates', d),
     updateCustomTemplate: (id, d) => Api.patch('/api/tprm/custom-templates/' + id, d),
     deleteCustomTemplate: (id) => Api.del('/api/tprm/custom-templates/' + id),
+    getSettings: () => Api.get('/api/tprm/settings'),
+    updateSettings: (d) => Api.put('/api/tprm/settings', d),
   },
   regwatch: {
     status: () => Api.get('/api/regwatch/status'),
@@ -525,6 +533,7 @@ const Api = {
     update: (id, d) => Api.patch('/api/vendor-issues/' + id, d),
     del: (id) => Api.del('/api/vendor-issues/' + id),
     summary: () => Api.get('/api/vendor-issues/stats/summary'),
+    approveClosure: (id, d) => Api.post('/api/vendor-issues/' + id + '/approve-closure', d || {}),
   },
   supplier_questionnaires_ai: {
     triggerReview: (id) => Api.post('/api/supplier-questionnaires/' + id + '/ai-review', {}),
